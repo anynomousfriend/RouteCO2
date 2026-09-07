@@ -1,0 +1,233 @@
+[
+  {
+    "callsign": "DLH400",
+    "baroAltitudeMeters": 8000,
+    "velocityMps": 220,
+    "verticalRateMps": -12.0,
+    "onGround": false,
+    "timestamp": 1716000000,
+    "latitude": 50.32,
+    "longitude": 9.45,
+    "trueTrackDeg": 248.5
+  },
+  {
+    "callsign": "DLH400",
+    "baroAltitudeMeters": 6800,
+    "velocityMps": 215,
+    "verticalRateMps": -10.5,
+    "onGround": false,
+    "timestamp": 1716000600,
+    "latitude": 50.29,
+    "longitude": 9.3,
+    "trueTrackDeg": 249.0
+  },
+  {
+    "callsign": "DLH400",
+    "baroAltitudeMeters": 5600,
+    "velocityMps": 205,
+    "verticalRateMps": -9.5,
+    "onGround": false,
+    "timestamp": 1716001200,
+    "latitude": 50.25,
+    "longitude": 9.15,
+    "trueTrackDeg": 249.2
+  },
+  {
+    "callsign": "DLH400",
+    "baroAltitudeMeters": 4500,
+    "velocityMps": 195,
+    "verticalRateMps": -8.5,
+    "onGround": false,
+    "timestamp": 1716001800,
+    "latitude": 50.21,
+    "longitude": 9.0,
+    "trueTrackDeg": 249.5
+  },
+  {
+    "callsign": "DLH400",
+    "baroAltitudeMeters": 3500,
+    "velocityMps": 180,
+    "verticalRateMps": -7.5,
+    "onGround": false,
+    "timestamp": 1716002200,
+    "latitude": 50.17,
+    "longitude": 8.87,
+    "trueTrackDeg": 250.0
+  },
+  {
+    "callsign": "DLH400",
+    "baroAltitudeMeters": 2500,
+    "velocityMps": 165,
+    "verticalRateMps": -6.5,
+    "onGround": false,
+    "timestamp": 1716002600,
+    "latitude": 50.13,
+    "longitude": 8.76,
+    "trueTrackDeg": 250.2
+  },
+  {
+    "callsign": "DLH400",
+    "baroAltitudeMeters": 1800,
+    "velocityMps": 150,
+    "verticalRateMps": -5.5,
+    "onGround": false,
+    "timestamp": 1716002900,
+    "latitude": 50.1,
+    "longitude": 8.69,
+    "trueTrackDeg": 250.5
+  },
+  {
+    "callsign": "DLH400",
+    "baroAltitudeMeters": 1200,
+    "velocityMps": 135,
+    "verticalRateMps": -4.8,
+    "onGround": false,
+    "timestamp": 1716003150,
+    "latitude": 50.08,
+    "longitude": 8.64,
+    "trueTrackDeg": 250.5
+  },
+  {
+    "callsign": "DLH400",
+    "baroAltitudeMeters": 800,
+    "velocityMps": 115,
+    "verticalRateMps": -4.2,
+    "onGround": false,
+    "timestamp": 1716003300,
+    "latitude": 50.065,
+    "longitude": 8.61,
+    "trueTrackDeg": 250.8
+  },
+  {
+    "callsign": "DLH400",
+    "baroAltitudeMeters": 500,
+    "velocityMps": 98,
+    "verticalRateMps": -3.8,
+    "onGround": false,
+    "timestamp": 1716003400,
+    "latitude": 50.052,
+    "longitude": 8.592,
+    "trueTrackDeg": 251.0
+  },
+  {
+    "callsign": "DLH400",
+    "baroAltitudeMeters": 300,
+    "velocityMps": 85,
+    "verticalRateMps": -3.5,
+    "onGround": false,
+    "timestamp": 1716003480,
+    "latitude": 50.045,
+    "longitude": 8.582,
+    "trueTrackDeg": 251.0
+  },
+  {
+    "callsign": "DLH400",
+    "baroAltitudeMeters": 150,
+    "velocityMps": 76,
+    "verticalRateMps": -3.2,
+    "onGround": false,
+    "timestamp": 1716003530,
+    "latitude": 50.04,
+    "longitude": 8.576,
+    "trueTrackDeg": 251.0
+  },
+  {
+    "callsign": "DLH400",
+    "baroAltitudeMeters": 80,
+    "velocityMps": 72,
+    "verticalRateMps": -2.5,
+    "onGround": false,
+    "timestamp": 1716003560,
+    "latitude": 50.037,
+    "longitude": 8.573,
+    "trueTrackDeg": 251.0
+  },
+  {
+    "callsign": "DLH400",
+    "baroAltitudeMeters": 50,
+    "velocityMps": 70,
+    "verticalRateMps": -2.0,
+    "onGround": false,
+    "timestamp": 1716003580,
+    "latitude": 50.035,
+    "longitude": 8.572,
+    "trueTrackDeg": 251.0
+  },
+  {
+    "callsign": "DLH400",
+    "baroAltitudeMeters": 25,
+    "velocityMps": 69,
+    "verticalRateMps": -1.2,
+    "onGround": false,
+    "timestamp": 1716003590,
+    "latitude": 50.034,
+    "longitude": 8.571,
+    "trueTrackDeg": 251.0
+  },
+  {
+    "callsign": "DLH400",
+    "baroAltitudeMeters": 10,
+    "velocityMps": 68.5,
+    "verticalRateMps": -0.8,
+    "onGround": false,
+    "timestamp": 1716003596,
+    "latitude": 50.0335,
+    "longitude": 8.5707,
+    "trueTrackDeg": 251.0
+  },
+  {
+    "callsign": "DLH400",
+    "baroAltitudeMeters": 8,
+    "velocityMps": 68,
+    "verticalRateMps": -0.5,
+    "onGround": true,
+    "timestamp": 1716003600,
+    "latitude": 50.0333,
+    "longitude": 8.5705,
+    "trueTrackDeg": 251.0
+  },
+  {
+    "callsign": "DLH400",
+    "baroAltitudeMeters": 8,
+    "velocityMps": 55,
+    "verticalRateMps": 0.0,
+    "onGround": true,
+    "timestamp": 1716003610,
+    "latitude": 50.0325,
+    "longitude": 8.567,
+    "trueTrackDeg": 251.0
+  },
+  {
+    "callsign": "DLH400",
+    "baroAltitudeMeters": 8,
+    "velocityMps": 40,
+    "verticalRateMps": 0.0,
+    "onGround": true,
+    "timestamp": 1716003620,
+    "latitude": 50.0318,
+    "longitude": 8.5635,
+    "trueTrackDeg": 251.0
+  },
+  {
+    "callsign": "DLH400",
+    "baroAltitudeMeters": 8,
+    "velocityMps": 26,
+    "verticalRateMps": 0.0,
+    "onGround": true,
+    "timestamp": 1716003630,
+    "latitude": 50.0312,
+    "longitude": 8.5605,
+    "trueTrackDeg": 251.0
+  },
+  {
+    "callsign": "DLH400",
+    "baroAltitudeMeters": 8,
+    "velocityMps": 15,
+    "verticalRateMps": 0.0,
+    "onGround": true,
+    "timestamp": 1716003640,
+    "latitude": 50.0308,
+    "longitude": 8.558,
+    "trueTrackDeg": 251.0
+  }
+]
