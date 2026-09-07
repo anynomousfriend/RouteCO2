@@ -52,7 +52,7 @@ export interface LiveFlightSummary {
   onGround: boolean;
 }
 
-const DEFAULT_VAULT_ADDRESS: Address = "0x56E71fcC37e573cD3291c0906053e51E5c83518c";
+const DEFAULT_VAULT_ADDRESS: Address = "0xeb20b11fabe61a00103c040e8febb7d12749e36d";
 
 /**
  * Executes a verified deterministic descent replay session for DLH400
