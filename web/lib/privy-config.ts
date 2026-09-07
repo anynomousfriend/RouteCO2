@@ -15,7 +15,7 @@ export const privyConfig = {
       showWalletLoginFirst: true,
       logo: "https://copperx.io/copperx.png",
     },
-    loginMethods: ["wallet" as const, "email" as const, "google" as const],
+    loginMethods: ["wallet" as const, "email" as const],
     defaultChain: arcTestnet,
     supportedChains: [arcTestnet],
     embeddedWallets: {
