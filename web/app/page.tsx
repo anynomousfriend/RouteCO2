@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import dynamic from "next/dynamic";
-import { usePrivy } from "@privy-io/react-auth";
+import { useWalletAuth } from "../lib/use-wallet-auth";
 import { toast } from "sonner";
 import {
   Plane,
@@ -33,7 +33,7 @@ const WindyFlightMap = dynamic(() => import("../components/WindyFlightMap"), {
 });
 
 export default function FlightOperationsConsole() {
-  const { ready, authenticated, user, login, logout } = usePrivy();
+  const { ready, authenticated, user, login, logout } = useWalletAuth();
 
   // Mode: "live" (Windy Global Radar) vs "replay" (Touchdown Demo)
   const [mode, setMode] = useState<"live" | "replay">("replay");

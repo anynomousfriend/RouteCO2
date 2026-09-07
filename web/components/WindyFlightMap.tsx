@@ -39,11 +39,22 @@ export default function WindyFlightMap({
 
   // Initialize Leaflet map
   useEffect(() => {
-    if (!mapContainerRef.current || mapInstanceRef.current) return;
+    let isMounted = true;
+    const container = mapContainerRef.current;
+    if (!container) return;
+
+    // Guard against React 18/19 StrictMode double-initialization
+    if (mapInstanceRef.current || (container as any)._leaflet_id) {
+      return;
+    }
 
     // Dynamically load Leaflet
     import("leaflet").then((L) => {
-      const map = L.map(mapContainerRef.current!, {
+      if (!isMounted || !mapContainerRef.current || (mapContainerRef.current as any)._leaflet_id) {
+        return;
+      }
+
+      const map = L.map(mapContainerRef.current, {
         center: [50.0333, 8.5706], // Centered around Frankfurt / Central Europe
         zoom: 5,
         minZoom: 3,
@@ -53,12 +64,14 @@ export default function WindyFlightMap({
 
       L.control.zoom({ position: "bottomright" }).addTo(map);
 
-      // CartoDB Dark Matter tile layer
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-        attribution: '&copy; <a href="https://carto.com/">CARTO</a> | OpenSky Network ADS-B',
-        subdomains: "abcd",
-        maxZoom: 19,
-      }).addTo(map);
+      // Esri World Dark Gray Canvas tile layer (100% free, zero API key required)
+      L.tileLayer(
+        "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+        {
+          attribution: "Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ | OpenSky Network ADS-B",
+          maxZoom: 16,
+        }
+      ).addTo(map);
 
       const markersGroup = L.layerGroup().addTo(map);
       markersLayerRef.current = markersGroup;
@@ -66,9 +79,13 @@ export default function WindyFlightMap({
     });
 
     return () => {
+      isMounted = false;
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
+      }
+      if (container && (container as any)._leaflet_id) {
+        delete (container as any)._leaflet_id;
       }
     };
   }, []);

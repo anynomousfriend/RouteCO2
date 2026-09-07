@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 export interface LiveFlightSummary {
   icao24: string;
@@ -18,7 +18,7 @@ let cachedFlights: LiveFlightSummary[] = [];
 let lastFetchTime = 0;
 const CACHE_TTL_MS = 15000; // 15 seconds cache
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const now = Date.now();
   if (cachedFlights.length > 0 && now - lastFetchTime < CACHE_TTL_MS) {
     return NextResponse.json({
@@ -29,13 +29,28 @@ export async function GET() {
     });
   }
 
+  const { searchParams } = new URL(request.url);
+  const isGlobal = searchParams.get("all") === "true";
+  
+  // Use bounding box around European/Atlantic commercial flight corridor by default
+  // OpenSky global queries transfer 5MB+ and take 20s+, bounding boxes return in <800ms
+  const queryUrl = isGlobal
+    ? "https://opensky-network.org/api/states/all"
+    : `https://opensky-network.org/api/states/all?lamin=${searchParams.get("lamin") || "35"}&lomin=${searchParams.get("lomin") || "-15"}&lamax=${searchParams.get("lamax") || "60"}&lomax=${searchParams.get("lomax") || "30"}`;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 12000);
+
   try {
-    const response = await fetch("https://opensky-network.org/api/states/all", {
+    const response = await fetch(queryUrl, {
+      signal: controller.signal,
       headers: {
         Accept: "application/json",
+        "User-Agent": "SkyRoute-Console/1.0 (ETHOnline2026; FlightOperations)",
       },
-      next: { revalidate: 15 },
     });
+
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       if (cachedFlights.length > 0) {
@@ -47,7 +62,7 @@ export async function GET() {
         });
       }
       return NextResponse.json(
-        { error: `OpenSky API returned status ${response.status}` },
+        { error: `OpenSky Network returned status ${response.status}` },
         { status: response.status }
       );
     }
@@ -55,7 +70,7 @@ export async function GET() {
     const data = (await response.json()) as { states: (string | number | boolean | null)[][] };
 
     if (!data.states || !Array.isArray(data.states)) {
-      return NextResponse.json({ flights: cachedFlights });
+      return NextResponse.json({ flights: cachedFlights, count: cachedFlights.length, cached: true });
     }
 
     // Filter for active airborne commercial flights with valid coordinates
@@ -99,7 +114,16 @@ export async function GET() {
       timestamp: lastFetchTime,
     });
   } catch (error: unknown) {
+    clearTimeout(timeoutId);
+    if (cachedFlights.length > 0) {
+      return NextResponse.json({
+        flights: cachedFlights,
+        count: cachedFlights.length,
+        cached: true,
+        timestamp: lastFetchTime,
+      });
+    }
     const message = error instanceof Error ? error.message : "Failed to fetch live flight telemetry";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: 502 });
   }
 }
