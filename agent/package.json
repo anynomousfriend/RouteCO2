@@ -1,0 +1,19 @@
+{
+  "name": "@skyroute/agent",
+  "version": "0.1.0",
+  "description": "Autonomous Flight Dispatcher Daemon & ICAO Fuel-Burn Engine on Arc",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "viem": "^2.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}
