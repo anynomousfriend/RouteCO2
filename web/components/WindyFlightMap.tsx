@@ -132,8 +132,10 @@ export default function WindyFlightMap({
 
         const iconHtml = `
           <div style="transform: rotate(${flight.trueTrackDeg}deg) scale(${scale}); width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: transform 0.2s ease;">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="${color}" stroke="${stroke}" stroke-width="1.2" style="filter: drop-shadow(0 2px 4px rgba(0,0,0,0.6));">
-              <path d="M12 2L15 9L22 11L15 14L15 20L12 18L9 20L9 14L2 11L9 9Z" />
+            <svg width="26" height="26" viewBox="0 0 122.88 122.88" style="filter: drop-shadow(0 2px 5px rgba(0,0,0,0.65));">
+              <g fill="${color}" stroke="${stroke}" stroke-width="2.5" stroke-linejoin="round" transform="translate(61.44, 61.44) rotate(-45) scale(0.68) translate(-61.44, -61.44)">
+                <path fill-rule="evenodd" clip-rule="evenodd" d="M16.63,105.75c0.01-4.03,2.3-7.97,6.03-12.38L1.09,79.73c-1.36-0.59-1.33-1.42-0.54-2.4l4.57-3.9c0.83-0.51,1.71-0.73,2.66-0.47l26.62,4.5l22.18-24.02L4.8,18.41c-1.31-0.77-1.42-1.64-0.07-2.65l7.47-5.96l67.5,18.97L99.64,7.45c6.69-5.79,13.19-8.38,18.18-7.15c2.75,0.68,3.72,1.5,4.57,4.08c1.65,5.06-0.91,11.86-6.96,18.86L94.11,43.18l18.97,67.5l-5.96,7.47c-1.01,1.34-1.88,1.23-2.65-0.07L69.43,66.31L45.41,88.48l4.5,26.62c0.26,0.94,0.05,1.82-0.47,2.66l-3.9,4.57c-0.97,0.79-1.81,0.82-2.4-0.54l-13.64-21.57c-4.43,3.74-8.37,6.03-12.42,6.03C16.71,106.24,16.63,106.11,16.63,105.75L16.63,105.75z"/>
+              </g>
             </svg>
           </div>
         `;
@@ -255,9 +257,11 @@ export default function WindyFlightMap({
         const fill = isTouchdown ? "#10B981" : "#4C63ED";
 
         const iconHtml = `
-          <div style="transform: rotate(${replayFrame.trueTrackDeg}deg); width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; transition: transform 0.25s linear;">
-            <svg width="34" height="34" viewBox="0 0 24 24" fill="${fill}" stroke="${color}" stroke-width="1.8" style="filter: drop-shadow(0 4px 10px rgba(76, 99, 237, 0.7));">
-              <path d="M12 2L15 9L22 11L15 14L15 20L12 18L9 20L9 14L2 11L9 9Z" />
+          <div style="transform: rotate(${replayFrame.trueTrackDeg}deg); width: 42px; height: 42px; display: flex; align-items: center; justify-content: center; transition: transform 0.25s linear;">
+            <svg width="38" height="38" viewBox="0 0 122.88 122.88" style="filter: drop-shadow(0 4px 12px rgba(76, 99, 237, 0.75));">
+              <g fill="${fill}" stroke="${color}" stroke-width="3" stroke-linejoin="round" transform="translate(61.44, 61.44) rotate(-45) scale(0.68) translate(-61.44, -61.44)">
+                <path fill-rule="evenodd" clip-rule="evenodd" d="M16.63,105.75c0.01-4.03,2.3-7.97,6.03-12.38L1.09,79.73c-1.36-0.59-1.33-1.42-0.54-2.4l4.57-3.9c0.83-0.51,1.71-0.73,2.66-0.47l26.62,4.5l22.18-24.02L4.8,18.41c-1.31-0.77-1.42-1.64-0.07-2.65l7.47-5.96l67.5,18.97L99.64,7.45c6.69-5.79,13.19-8.38,18.18-7.15c2.75,0.68,3.72,1.5,4.57,4.08c1.65,5.06-0.91,11.86-6.96,18.86L94.11,43.18l18.97,67.5l-5.96,7.47c-1.01,1.34-1.88,1.23-2.65-0.07L69.43,66.31L45.41,88.48l4.5,26.62c0.26,0.94,0.05,1.82-0.47,2.66l-3.9,4.57c-0.97,0.79-1.81,0.82-2.4-0.54l-13.64-21.57c-4.43,3.74-8.37,6.03-12.42,6.03C16.71,106.24,16.63,106.11,16.63,105.75L16.63,105.75z"/>
+              </g>
             </svg>
           </div>
         `;

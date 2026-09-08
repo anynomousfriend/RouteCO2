@@ -1,5 +1,9 @@
 <p align="center">
-  <img src="web/public/logo.svg" width="96" height="96" alt="RouteCO2 Logo" />
+  <img src="web/public/cover.png" width="100%" alt="RouteCO2 Cover Banner" />
+</p>
+
+<p align="center">
+  <img src="web/public/logo.svg" width="88" height="88" alt="RouteCO2 Logo" />
 </p>
 
 <h1 align="center">RouteCO2</h1>
