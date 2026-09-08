@@ -25,6 +25,7 @@ import {
   SettlementCertificateModal,
   type SettlementCertificateData,
 } from "../components/SettlementCertificateModal";
+import { RouteCo2Logo } from "../components/RouteCo2Logo";
 import { formatEther } from "viem";
 import {
   publicArcClient,
@@ -390,11 +391,7 @@ export default function FlightOperationsConsole() {
       {/* ── HEADER ── */}
       <header className="flex items-center gap-5 shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-[0_2px_10px_rgba(0,0,0,0.06)] shrink-0">
-            <div className="w-5 h-5 bg-[#7C4DFF] flex items-center justify-center text-white text-[10px] font-black [clip-path:polygon(50%_0%,100%_50%,50%_100%,0%_50%)]">
-              R
-            </div>
-          </div>
+          <RouteCo2Logo className="w-12 h-12 shadow-[0_2px_10px_rgba(0,0,0,0.06)] shrink-0 border border-black/5 rounded-2xl" />
           <div className="hidden md:flex flex-col">
             <span className="font-serif text-lg font-normal leading-none text-black">Route<strong className="font-sans font-extrabold">CO2</strong></span>
             <span className="text-[10px] font-mono text-[#666666] mt-0.5">Flight Ops & Treasury</span>

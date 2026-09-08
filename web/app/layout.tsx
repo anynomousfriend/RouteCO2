@@ -7,7 +7,9 @@ export const metadata: Metadata = {
   title: "RouteCO2 | Autonomous In-Flight Carbon Settlement Protocol",
   description: "Settling verified ICAO carbon offsets the instant a flight lands on Arc via 1inch Aqua and Circle Agent Stack.",
   icons: {
-    icon: "/favicon.svg",
+    icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
+    shortcut: "/favicon.svg",
+    apple: "/favicon.svg",
   },
 };
 

@@ -14,6 +14,7 @@ import {
   Layers,
   Zap,
 } from "lucide-react";
+import { RouteCo2Logo } from "./RouteCo2Logo";
 
 export interface SettlementCertificateData {
   flightId: string;
@@ -72,9 +73,7 @@ export function SettlementCertificateModal({
         {/* Header Bar */}
         <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 bg-white/95 backdrop-blur-xs border-b border-black/5 no-print">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-black text-white flex items-center justify-center font-bold text-sm">
-              R
-            </div>
+            <RouteCo2Logo className="w-8 h-8 rounded-lg shadow-xs border border-black/10 shrink-0" />
             <div>
               <div className="text-xs font-mono font-bold tracking-wider text-black">
                 ROUTECO2 // FLIGHT OPERATIONS

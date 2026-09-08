@@ -1,12 +1,18 @@
-# RouteCO2 ✈️⚡
-### Autonomous In-Flight Carbon Settlement Protocol
-*Built for ETHOnline 2026*
+<p align="center">
+  <img src="web/public/logo.svg" width="96" height="96" alt="RouteCO2 Logo" />
+</p>
 
-[![Foundry](https://img.shields.io/badge/Foundry-Passing-emerald)](https://getfoundry.sh/)
-[![Arc Testnet](https://img.shields.io/badge/Arc%20Testnet-5042002-indigo)](https://testnet.arcscan.app)
-[![1inch Aqua](https://img.shields.io/badge/1inch-Aqua-blue)](https://1inch.io/)
-[![Circle Agent Stack](https://img.shields.io/badge/Circle-Agent%20Stack-purple)](https://www.circle.com/)
-[![Privy](https://img.shields.io/badge/Privy-Web3%20Auth-pink)](https://privy.io/)
+<h1 align="center">RouteCO2</h1>
+<h3 align="center">Autonomous In-Flight Carbon Settlement Protocol</h3>
+<p align="center"><em>Built for ETHOnline 2026</em></p>
+
+<p align="center">
+  <a href="https://getfoundry.sh/"><img src="https://img.shields.io/badge/Foundry-Passing-emerald" alt="Foundry" /></a>
+  <a href="https://testnet.arcscan.app"><img src="https://img.shields.io/badge/Arc%20Testnet-5042002-indigo" alt="Arc Testnet" /></a>
+  <a href="https://1inch.io/"><img src="https://img.shields.io/badge/1inch-Aqua-blue" alt="1inch Aqua" /></a>
+  <a href="https://www.circle.com/"><img src="https://img.shields.io/badge/Circle-Agent%20Stack-purple" alt="Circle Agent Stack" /></a>
+  <a href="https://privy.io/"><img src="https://img.shields.io/badge/Privy-Web3%20Auth-pink" alt="Privy" /></a>
+</p>
 
 ---
 
