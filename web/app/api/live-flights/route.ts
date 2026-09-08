@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
       signal: controller.signal,
       headers: {
         Accept: "application/json",
-        "User-Agent": "SkyRoute-Console/1.0 (ETHOnline2026; FlightOperations)",
+        "User-Agent": "RouteCO2-Console/1.0 (ETHOnline2026; FlightOperations)",
       },
     });
 

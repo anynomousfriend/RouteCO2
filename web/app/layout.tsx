@@ -4,8 +4,11 @@ import "./globals.css";
 import Providers from "../components/Providers";
 
 export const metadata: Metadata = {
-  title: "SkyRoute | Autonomous In-Flight Carbon Settlement Protocol",
+  title: "RouteCO2 | Autonomous In-Flight Carbon Settlement Protocol",
   description: "Settling verified ICAO carbon offsets the instant a flight lands on Arc via 1inch Aqua and Circle Agent Stack.",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({
@@ -14,15 +17,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
-      <body className="bg-obsidian-950 text-slate-100 min-h-screen antialiased selection:bg-indigo-500/30 selection:text-white">
+    <html lang="en">
+      <body className="bg-[#EBEBEB] text-[#000000] min-h-screen antialiased selection:bg-[#7C4DFF]/20 selection:text-[#000000]">
         <Providers>
           {children}
           <Toaster
             position="bottom-right"
-            theme="dark"
+            theme="light"
             toastOptions={{
-              className: "!bg-obsidian-900 !border !border-indigo-500/30 !text-white !shadow-2xl",
+              className: "!bg-white !border !border-black/10 !text-black !shadow-2xl !rounded-2xl font-sans",
             }}
           />
         </Providers>

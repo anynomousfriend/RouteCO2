@@ -1,5 +1,5 @@
 {
-  "name": "@skyroute/agent",
+  "name": "@routeco2/agent",
   "version": "0.1.0",
   "description": "Autonomous Flight Dispatcher Daemon & ICAO Fuel-Burn Engine on Arc",
   "type": "module",

@@ -87,7 +87,7 @@ export async function runReplaySession(options: {
 
   if (verbose) {
     console.log("==================================================================");
-    console.log("      SKYROUTE AUTONOMOUS FLIGHT DISPATCHER (REPLAY ENGINE)       ");
+    console.log("      ROUTECO2 AUTONOMOUS FLIGHT DISPATCHER (REPLAY ENGINE)       ");
     console.log("==================================================================");
     console.log(`Flight:              ${callsign}`);
     console.log(`Flight ID:           ${flightId}`);
@@ -156,11 +156,40 @@ export async function runReplaySession(options: {
 /**
  * Queries real-time commercial aircraft from OpenSky Network (Zero-Mock)
  */
-export async function queryLiveFleet(limit = 10): Promise<LiveFlightSummary[]> {
-  const url = "https://opensky-network.org/api/states/all";
-  const response = await fetch(url, {
-    headers: { "User-Agent": "SkyRoute-Agent/1.0 (ETHOnline2026)" },
-  });
+export async function queryLiveFleet(limit = 10, bbox = true): Promise<LiveFlightSummary[]> {
+  const url = bbox
+    ? "https://opensky-network.org/api/states/all?lamin=35&lomin=-15&lamax=60&lomax=30"
+    : "https://opensky-network.org/api/states/all";
+  const headers: Record<string, string> = {
+    "User-Agent": "RouteCO2-Agent/1.0 (ETHOnline2026)",
+  };
+
+  if (process.env.OPENSKY_USERNAME && process.env.OPENSKY_PASSWORD) {
+    const basic = Buffer.from(
+      `${process.env.OPENSKY_USERNAME}:${process.env.OPENSKY_PASSWORD}`
+    ).toString("base64");
+    headers["Authorization"] = `Basic ${basic}`;
+  }
+
+  let response = await fetch(url, { headers });
+
+  for (let attempt = 0; attempt < 2 && response.status === 429; attempt++) {
+    // If retry-after is small (< 10s), wait and retry
+    const retryAfter = parseInt(response.headers.get("x-rate-limit-retry-after-seconds") || "0", 10);
+    if (retryAfter > 0 && retryAfter <= 10) {
+      await new Promise((r) => setTimeout(r, retryAfter * 1000 + 500));
+      response = await fetch(url, { headers });
+    } else {
+      break;
+    }
+  }
+
+  if (response.status === 429) {
+    const retryAfter = response.headers.get("x-rate-limit-retry-after-seconds");
+    throw new Error(
+      `OpenSky Network API rate limit reached (HTTP 429, retry after ${retryAfter || "unknown"}s). Configure OPENSKY_USERNAME and OPENSKY_PASSWORD in .env for authenticated access.`
+    );
+  }
 
   if (!response.ok) {
     throw new Error(`OpenSky Network API error: HTTP ${response.status} ${response.statusText}`);

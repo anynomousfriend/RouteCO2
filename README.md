@@ -1,4 +1,4 @@
-# SkyRoute ✈️⚡
+# RouteCO2 ✈️⚡
 ### Autonomous In-Flight Carbon Settlement Protocol
 *Built for ETHOnline 2026*
 
@@ -12,9 +12,9 @@
 
 ## 1. Executive Summary
 
-**SkyRoute** is a decentralized aviation protocol that connects real-time aircraft transponder telemetry (ADS-B) directly to autonomous on-chain carbon offset markets.
+**RouteCO2** is a decentralized aviation protocol that connects real-time aircraft transponder telemetry (ADS-B) directly to autonomous on-chain carbon offset markets.
 
-Rather than relying on months-delayed corporate distance estimates or locking millions of dollars into static escrow accounts, SkyRoute settles verified carbon offsets **the instant an aircraft touches down on the runway ("Wheels-Down")**—with **zero custody lockup**, **zero gas friction**, and **zero runtime wallet popups**.
+Rather than relying on months-delayed corporate distance estimates or locking millions of dollars into static escrow accounts, RouteCO2 settles verified carbon offsets **the instant an aircraft touches down on the runway ("Wheels-Down")**—with **zero custody lockup**, **zero gas friction**, and **zero runtime wallet popups**.
 
 ```
                                   ┌────────────────────────────────────────────────────────┐
