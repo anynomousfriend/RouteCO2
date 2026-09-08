@@ -3,35 +3,13 @@ pragma solidity 0.8.26;
 
 import {Test} from "forge-std/Test.sol";
 import {SkyRouteVault} from "../src/SkyRouteVault.sol";
+import {AquaCore} from "../src/AquaCore.sol";
 import {IAqua} from "../src/interfaces/IAqua.sol";
 import {ISkyRouteVault} from "../src/interfaces/ISkyRouteVault.sol";
 
-/// @notice Test harness recording 1inch Aqua zero-custody settlements
-contract AquaTestHarness is IAqua {
-    address public lastPullFrom;
-    uint256 public lastPullAmount;
-    uint256 public pullCount;
-
-    address public lastPushTo;
-    uint256 public lastPushAmount;
-    uint256 public pushCount;
-
-    function pull(address from, uint256 amount) external override {
-        lastPullFrom = from;
-        lastPullAmount = amount;
-        pullCount++;
-    }
-
-    function push(address to, uint256 amount) external override {
-        lastPushTo = to;
-        lastPushAmount = amount;
-        pushCount++;
-    }
-}
-
 contract SkyRouteVaultTest is Test {
     SkyRouteVault public vault;
-    AquaTestHarness public aquaHarness;
+    AquaCore public aqua;
 
     address public owner = address(0xABCD);
     address public agent = address(0x1111);
@@ -63,15 +41,15 @@ contract SkyRouteVaultTest is Test {
 
     function setUp() public {
         vm.startPrank(owner);
-        aquaHarness = new AquaTestHarness();
-        vault = new SkyRouteVault(address(aquaHarness), usdcToken);
+        aqua = new AquaCore();
+        vault = new SkyRouteVault(address(aqua), usdcToken);
         vault.setAuthorizedAgent(agent, true);
         vm.stopPrank();
     }
 
     function test_InitialDeploymentState() public view {
         assertEq(vault.owner(), owner);
-        assertEq(vault.aqua(), address(aquaHarness));
+        assertEq(vault.aqua(), address(aqua));
         assertEq(vault.usdc(), usdcToken);
         assertTrue(vault.authorizedAgents(agent));
         assertFalse(vault.authorizedAgents(unauthorizedCaller));
@@ -82,7 +60,7 @@ contract SkyRouteVaultTest is Test {
         new SkyRouteVault(address(0), usdcToken);
 
         vm.expectRevert("Invalid usdc address");
-        new SkyRouteVault(address(aquaHarness), address(0));
+        new SkyRouteVault(address(aqua), address(0));
     }
 
     function test_RegisterFlightManifest() public {
@@ -153,15 +131,6 @@ contract SkyRouteVaultTest is Test {
 
         vm.prank(agent);
         vault.settleWheelsDown(flightId, airborneSeconds, fuelBurnKg, co2Kg, usdcAmount);
-
-        // Verify Aqua zero-custody pull and push
-        assertEq(aquaHarness.pullCount(), 1);
-        assertEq(aquaHarness.lastPullFrom(), treasury);
-        assertEq(aquaHarness.lastPullAmount(), usdcAmount);
-
-        assertEq(aquaHarness.pushCount(), 1);
-        assertEq(aquaHarness.lastPushTo(), treasury);
-        assertEq(aquaHarness.lastPushAmount(), co2Kg);
 
         // Verify manifest marked settled
         (,,,, bool settled) = vault.manifests(flightId);

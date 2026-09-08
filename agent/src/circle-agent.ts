@@ -26,7 +26,7 @@ export const arcTestnet = defineChain({
   name: "Arc Testnet",
   nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 6 },
   rpcUrls: {
-    default: { http: ["https://arc-testnet.drpc.org"] },
+    default: { http: ["https://rpc.testnet.arc.network", "https://arc-testnet.drpc.org"] },
   },
   blockExplorers: {
     default: { name: "ArcScan", url: "https://testnet.arcscan.app" },
@@ -91,7 +91,7 @@ export class CircleAgentDispatcher {
       vaultAddress: config.vaultAddress,
       maxDailyBudgetUSDC: config.maxDailyBudgetUSDC,
       maxPerFlightBudgetUSDC: config.maxPerFlightBudgetUSDC,
-      rpcUrl: config.rpcUrl ?? "https://arc-testnet.drpc.org",
+      rpcUrl: config.rpcUrl ?? "https://rpc.testnet.arc.network",
     };
 
     this.publicClient = createPublicClient({

@@ -11,9 +11,9 @@ export const privyConfig = {
   config: {
     appearance: {
       theme: "dark" as const,
-      accentColor: "#4C63ED" as `#${string}`, // Copperx Electric Indigo
+      accentColor: "#7C4DFF" as `#${string}`, // RouteCO2 Violet
       showWalletLoginFirst: true,
-      logo: "https://copperx.io/copperx.png",
+      logo: "/favicon.svg",
     },
     loginMethods: ["wallet" as const, "email" as const],
     defaultChain: arcTestnet,

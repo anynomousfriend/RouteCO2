@@ -52,7 +52,10 @@ export interface LiveFlightSummary {
   onGround: boolean;
 }
 
-const DEFAULT_VAULT_ADDRESS: Address = "0xeb20b11fabe61a00103c040e8febb7d12749e36d";
+const DEFAULT_VAULT_ADDRESS: Address =
+  (process.env.NEXT_PUBLIC_ARC_VAULT_ADDRESS as Address) ||
+  (process.env.SKYROUTE_VAULT_ADDRESS as Address) ||
+  "0x655CF529bF4838C30227E4838A95B9D6A39C7f8C";
 
 /**
  * Executes a verified deterministic descent replay session for DLH400
@@ -76,10 +79,17 @@ export async function runReplaySession(options: {
   const callsign = frames[0]?.callsign ?? "DLH400";
   const flightId = keccak256(toHex(`${callsign}_${frames[0]?.timestamp ?? Date.now()}`));
 
+  const maxDaily = process.env.DISPATCHER_MAX_DAILY_BUDGET_USDC
+    ? Number(process.env.DISPATCHER_MAX_DAILY_BUDGET_USDC)
+    : 5000.0;
+  const maxPerFlight = process.env.DISPATCHER_MAX_PER_FLIGHT_BUDGET_USDC
+    ? Number(process.env.DISPATCHER_MAX_PER_FLIGHT_BUDGET_USDC)
+    : 500.0;
+
   const dispatcher = new CircleAgentDispatcher({
     vaultAddress,
-    maxDailyBudgetUSDC: 5000.0,
-    maxPerFlightBudgetUSDC: 500.0,
+    maxDailyBudgetUSDC: maxDaily,
+    maxPerFlightBudgetUSDC: maxPerFlight,
   });
 
   // Query live Arc block number for freshness verification
@@ -172,17 +182,6 @@ export async function queryLiveFleet(limit = 10, bbox = true): Promise<LiveFligh
   }
 
   let response = await fetch(url, { headers });
-
-  for (let attempt = 0; attempt < 2 && response.status === 429; attempt++) {
-    // If retry-after is small (< 10s), wait and retry
-    const retryAfter = parseInt(response.headers.get("x-rate-limit-retry-after-seconds") || "0", 10);
-    if (retryAfter > 0 && retryAfter <= 10) {
-      await new Promise((r) => setTimeout(r, retryAfter * 1000 + 500));
-      response = await fetch(url, { headers });
-    } else {
-      break;
-    }
-  }
 
   if (response.status === 429) {
     const retryAfter = response.headers.get("x-rate-limit-retry-after-seconds");

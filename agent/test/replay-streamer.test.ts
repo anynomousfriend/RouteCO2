@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 import { resolve } from "path";
 import {
@@ -75,12 +75,14 @@ describe("Recorded Real Flight Replay Dataset & Streamer (Dual-Mode Engine)", ()
     expect(streamer.isLanded()).toBe(false);
     expect(streamer.getFrames().length).toBe(frames.length);
 
-    const tickHandler = vi.fn();
-    streamer.on("tick", tickHandler);
+    let recordedTick: { frame: ReplayFrame; index: number; total: number } | null = null;
+    streamer.on("tick", (frame: ReplayFrame, index: number, total: number) => {
+      recordedTick = { frame, index, total };
+    });
 
     const firstFrame = streamer.stepNext();
     expect(firstFrame).toEqual(frames[0]);
-    expect(tickHandler).toHaveBeenCalledWith(frames[0], 0, frames.length);
+    expect(recordedTick).toEqual({ frame: frames[0], index: 0, total: frames.length });
     expect(streamer.getCurrentIndex()).toBe(1);
   });
 

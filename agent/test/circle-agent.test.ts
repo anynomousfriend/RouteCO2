@@ -14,7 +14,7 @@ describe("Circle Agent Wallet & Arc Gateway Nanopayment Dispatcher", () => {
     vaultAddress: mockVaultAddress,
     maxDailyBudgetUSDC: 500,
     maxPerFlightBudgetUSDC: 100,
-    rpcUrl: "https://arc-testnet.drpc.org",
+    rpcUrl: "https://rpc.testnet.arc.network",
   };
 
   const sampleFlightId: Hex =
@@ -27,7 +27,7 @@ describe("Circle Agent Wallet & Arc Gateway Nanopayment Dispatcher", () => {
       expect(arcTestnet.nativeCurrency.name).toBe("USDC");
       expect(arcTestnet.nativeCurrency.symbol).toBe("USDC");
       expect(arcTestnet.nativeCurrency.decimals).toBe(6);
-      expect(arcTestnet.rpcUrls.default.http[0]).toBe("https://arc-testnet.drpc.org");
+      expect(arcTestnet.rpcUrls.default.http[0]).toBe("https://rpc.testnet.arc.network");
       expect(arcTestnet.blockExplorers?.default.url).toBe("https://testnet.arcscan.app");
     });
   });
