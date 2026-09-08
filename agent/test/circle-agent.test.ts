@@ -9,9 +9,9 @@ import {
 import { calculateWheelsDownEmissions } from "../src/icao-engine.js";
 
 describe("Circle Agent Wallet & Arc Gateway Nanopayment Dispatcher", () => {
-  const mockVaultAddress: Address = "0x1111111111111111111111111111111111111111";
+  const sampleVaultAddress: Address = "0x1111111111111111111111111111111111111111";
   const defaultPolicy: AgentPolicyConfig = {
-    vaultAddress: mockVaultAddress,
+    vaultAddress: sampleVaultAddress,
     maxDailyBudgetUSDC: 500,
     maxPerFlightBudgetUSDC: 100,
     rpcUrl: "https://rpc.testnet.arc.network",
@@ -89,7 +89,7 @@ describe("Circle Agent Wallet & Arc Gateway Nanopayment Dispatcher", () => {
       const settlement = calculateWheelsDownEmissions(3600, "REGIONAL", 25.0);
       const tx = dispatcher.prepareSettlementTransaction(sampleFlightId, settlement);
 
-      expect(tx.to).toBe(mockVaultAddress);
+      expect(tx.to).toBe(sampleVaultAddress);
       expect(tx.chainId).toBe(5042002);
       expect(tx.data).toMatch(/^0x[0-9a-fA-F]+$/);
       expect(tx.settlement).toEqual(settlement);

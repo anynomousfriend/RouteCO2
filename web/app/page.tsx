@@ -61,6 +61,7 @@ export default function FlightOperationsConsole() {
   const [liveFlights, setLiveFlights] = useState<LiveFlightSummary[]>([]);
   const [selectedFlight, setSelectedFlight] = useState<LiveFlightSummary | null>(null);
   const [isLiveLoading, setIsLiveLoading] = useState(false);
+  const [liveSource, setLiveSource] = useState<string>("Global ADS-B Transponder Network");
 
   // Replay State
   const [replayIndex, setReplayIndex] = useState(0);
@@ -171,13 +172,16 @@ export default function FlightOperationsConsole() {
     };
   }, []);
 
-  // Fetch Live Flights from OpenSky API
+  // Fetch Live Flights from OpenSky / Global ADS-B Network
   const fetchLiveFlights = async () => {
     setIsLiveLoading(true);
     try {
       const res = await fetch("/api/live-flights");
       if (res.ok) {
         const json = await res.json();
+        if (json.source) {
+          setLiveSource(json.source);
+        }
         if (json.flights && json.flights.length > 0) {
           setLiveFlights(json.flights);
           if (!selectedFlight) {
@@ -194,7 +198,7 @@ export default function FlightOperationsConsole() {
 
   useEffect(() => {
     fetchLiveFlights();
-    const interval = setInterval(fetchLiveFlights, 30000);
+    const interval = setInterval(fetchLiveFlights, 12000);
     return () => clearInterval(interval);
   }, []);
 
@@ -444,10 +448,17 @@ export default function FlightOperationsConsole() {
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-[#666666]">
                   {mode === "replay" ? "Demonstration Flight" : "Active In-Flight Radar Target"}
                 </span>
-                <div className="font-serif text-[32px] font-normal leading-none mt-1">
-                  {mode === "replay"
-                    ? "DLH400"
-                    : activeData?.callsign || (isLiveLoading ? "Scanning..." : "No Signal")}
+                <div className="font-serif text-[32px] font-normal leading-none mt-1 flex items-center gap-2">
+                  <span>
+                    {mode === "replay"
+                      ? "DLH400"
+                      : activeData?.callsign || (isLiveLoading ? "Acquiring Signals..." : "Scanning Airspace...")}
+                  </span>
+                  {mode === "live" && activeData && (
+                    <span className="text-[10px] font-sans font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      LIVE
+                    </span>
+                  )}
                 </div>
               </div>
               <div className="text-right">
@@ -666,7 +677,7 @@ export default function FlightOperationsConsole() {
               </div>
               <div className="flex items-center gap-2 text-[10px] font-mono text-[#666666]">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span>OpenSky Feed Live</span>
+                <span>{liveSource}</span>
               </div>
             </div>
 
@@ -740,7 +751,11 @@ export default function FlightOperationsConsole() {
             <div className="flex flex-col text-xs border-t border-black/5 pt-2">
               <div className="flex justify-between items-baseline py-1.5 border-b border-black/5">
                 <span className="text-[#666666]">Airframe</span>
-                <span className="font-semibold text-black">A320 / B737</span>
+                <span className="font-semibold text-black">
+                  {mode === "replay"
+                    ? "A320 / B737"
+                    : (activeData as any)?.equipmentType || "Commercial Aircraft"}
+                </span>
               </div>
               <div className="flex justify-between items-baseline py-1.5 border-b border-black/5">
                 <span className="text-[#666666]">Transponder</span>

@@ -162,6 +162,15 @@ export default function WindyFlightMap({
     });
   }, [mode, liveFlights, selectedFlight, onSelectFlight]);
 
+  // Smoothly center map on selected flight
+  useEffect(() => {
+    if (!mapInstanceRef.current || !selectedFlight || mode !== "live") return;
+    mapInstanceRef.current.panTo([selectedFlight.latitude, selectedFlight.longitude], {
+      animate: true,
+      duration: 0.8,
+    });
+  }, [selectedFlight?.callsign, mode]);
+
   // Update Replay Flight Descent Track & Airplane Position
   useEffect(() => {
     if (!mapInstanceRef.current) return;

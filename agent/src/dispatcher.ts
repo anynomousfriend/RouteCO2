@@ -184,6 +184,39 @@ export async function queryLiveFleet(limit = 10, bbox = true): Promise<LiveFligh
   let response = await fetch(url, { headers });
 
   if (response.status === 429) {
+    // Attempt fallback to 24/7 Global ADS-B Network
+    try {
+      const adsbRes = await fetch("https://api.adsb.lol/v2/point/50.1109/8.6821/250", {
+        headers: { "User-Agent": "RouteCO2-Agent/1.0 (ETHOnline2026; FlightOperations)" },
+      });
+      if (adsbRes.ok) {
+        const adsbData = (await adsbRes.json()) as any;
+        const acList: any[] = adsbData.ac || [];
+        const liveAircraft = acList
+          .filter((a) => a.hex && a.flight && typeof a.lat === "number" && typeof a.lon === "number")
+          .slice(0, limit);
+
+        return liveAircraft.map((a) => {
+          const altMeters = typeof a.alt_baro === "number" ? Math.round(a.alt_baro * 0.3048) : null;
+          const velMps = typeof a.gs === "number" ? Math.round(a.gs * 0.514444) : null;
+          const vrateMps = typeof a.baro_rate === "number" ? Math.round(a.baro_rate * 0.00508 * 10) / 10 : null;
+          return {
+            callsign: String(a.flight).trim(),
+            icao24: String(a.hex).toLowerCase(),
+            originCountry: a.r ? String(a.r) : "Commercial",
+            category: "NARROW_BODY" as AircraftCategory,
+            hourlyBurnKg: ICAO_AIRCRAFT_BENCHMARKS.NARROW_BODY.hourlyBurnKg,
+            altitudeMeters: altMeters,
+            velocityMps: velMps,
+            verticalRateMps: vrateMps,
+            onGround: a.alt_baro === "ground",
+          };
+        });
+      }
+    } catch {
+      // Fall through to error
+    }
+
     const retryAfter = response.headers.get("x-rate-limit-retry-after-seconds");
     throw new Error(
       `OpenSky Network API rate limit reached (HTTP 429, retry after ${retryAfter || "unknown"}s). Configure OPENSKY_USERNAME and OPENSKY_PASSWORD in .env for authenticated access.`
