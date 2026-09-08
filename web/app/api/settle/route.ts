@@ -143,9 +143,13 @@ export async function POST(request: NextRequest) {
     }
 
     const treasury: Address = (treasuryAddress as Address) || account.address;
+    const finalUsdcAmount = BigInt(usdcAmount);
 
-    // Register Flight Manifest on-chain first
-    const budgetCap = 500_000_000n; // 500 USDC budget cap (in micro-units)
+    // Register Flight Manifest on-chain first (dynamic budget cap with 2x buffer)
+    const budgetCap =
+      finalUsdcAmount > 250_000_000n
+        ? finalUsdcAmount * 2n
+        : 500_000_000n; // At least 500 USDC
     const registerTxHash = await walletClient.writeContract({
       address: vaultAddress,
       abi: SKYROUTE_VAULT_ABI,
@@ -171,9 +175,6 @@ export async function POST(request: NextRequest) {
         )
       );
     }
-
-    // Convert usdcAmount to BigInt
-    const finalUsdcAmount = BigInt(usdcAmount);
 
     // Execute real settleWheelsDown transaction on Arc Testnet
     const settleTxHash = await walletClient.writeContract({

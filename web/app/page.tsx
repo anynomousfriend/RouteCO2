@@ -19,7 +19,12 @@ import {
   Loader2,
 } from "lucide-react";
 import type { LiveFlightSummary } from "./api/live-flights/route";
-import replayData from "../lib/replay-flight.json";
+import { REPLAY_SCENARIOS, type ReplayScenario } from "../lib/replay-scenarios";
+import { AquaFlowVisualizer } from "../components/AquaFlowVisualizer";
+import {
+  SettlementCertificateModal,
+  type SettlementCertificateData,
+} from "../components/SettlementCertificateModal";
 import { formatEther } from "viem";
 import {
   publicArcClient,
@@ -63,7 +68,13 @@ export default function FlightOperationsConsole() {
   const [isLiveLoading, setIsLiveLoading] = useState(false);
   const [liveSource, setLiveSource] = useState<string>("Global ADS-B Transponder Network");
 
-  // Replay State
+  // Multi-Flight Replay Scenarios (Category 4)
+  const [selectedScenarioIndex, setSelectedScenarioIndex] = useState(0);
+  const activeScenario: ReplayScenario =
+    REPLAY_SCENARIOS[selectedScenarioIndex] || REPLAY_SCENARIOS[0];
+  const activeReplayFrames = activeScenario.frames;
+
+  // Replay Playback State
   const [replayIndex, setReplayIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [replaySpeed, setReplaySpeed] = useState(1);
@@ -71,13 +82,17 @@ export default function FlightOperationsConsole() {
   const [isSettling, setIsSettling] = useState(false);
   const [settlementTxHash, setSettlementTxHash] = useState<string | undefined>(undefined);
 
+  // Executive Certificate Modal State (Category 5)
+  const [isCertificateOpen, setIsCertificateOpen] = useState(false);
+  const [certificateData, setCertificateData] = useState<SettlementCertificateData | null>(null);
+
   // On-Chain Event Logs
   const [onChainEvents, setOnChainEvents] = useState<OnChainSettlementItem[]>([]);
   const [rpcLatencyMs, setRpcLatencyMs] = useState<number | null>(null);
 
   const activeReplayFrame = useMemo(
-    () => replayData[replayIndex] || replayData[0],
-    [replayIndex]
+    () => activeReplayFrames[replayIndex] || activeReplayFrames[0],
+    [activeReplayFrames, replayIndex]
   );
 
   // Active Treasury Wallet on Arc Testnet
@@ -202,13 +217,42 @@ export default function FlightOperationsConsole() {
     return () => clearInterval(interval);
   }, []);
 
+  // Active Telemetry (Zero-Mock: renders null if no live flight is acquired yet)
+  const activeData =
+    mode === "replay"
+      ? activeReplayFrame
+      : selectedFlight || (liveFlights.length > 0 ? liveFlights[0] : null);
+
+  // ICAO Doc 9889 Emission Calculations
+  const altitudeFeet = activeData ? Math.round(activeData.baroAltitudeMeters * 3.28084) : 0;
+  const speedKnots = activeData ? Math.round(activeData.velocityMps * 1.94384) : 0;
+  const hourlyBurnKg = mode === "replay" ? activeScenario.hourlyBurnKg : 2400;
+
+  // Flight Leg Duration & Emission Benchmarks
+  const airborneSeconds =
+    mode === "replay"
+      ? activeScenario.plannedAirborneSeconds
+      : 5 * 60;
+  const fuelBurnKg = Math.round((airborneSeconds / 3600) * hourlyBurnKg);
+  const co2Kg = Math.round(fuelBurnKg * 3.16); // ICAO standard emission factor (3.16 kg CO2 per kg Jet-A)
+  const pricePerTonne = mode === "replay" ? activeScenario.pricePerTonneUSDC : 25.0;
+  const usdcCost = Math.max(0.35, +((co2Kg / 1000) * pricePerTonne).toFixed(2));
+
+  const isLanded =
+    mode === "replay"
+      ? activeReplayFrame.onGround || isSettled
+      : Boolean(activeData?.onGround);
+
   // Trigger Real Wheels-Down Settlement on Arc Testnet via /api/settle
   const triggerWheelsDownSettlement = async (frame: any) => {
     if (isSettling) return;
     setIsSettling(true);
 
+    const callsign = mode === "replay" ? activeScenario.callsign : frame.callsign || "DLH400";
+    const category = mode === "replay" ? activeScenario.category : "NARROW_BODY";
+
     const toastId = toast.loading(
-      `Broadcasting Wheels-Down Settlement for ${frame.callsign} to Arc Testnet...`
+      `Broadcasting Wheels-Down Settlement for ${callsign} to Arc Testnet...`
     );
 
     try {
@@ -216,9 +260,9 @@ export default function FlightOperationsConsole() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          callsign: frame.callsign || "DLH400",
-          aircraftCategory: "NARROW_BODY",
-          airborneSeconds: trancheMinutes * 60,
+          callsign,
+          aircraftCategory: category,
+          airborneSeconds,
           fuelBurnKg,
           co2Kg,
           usdcAmount: BigInt(Math.round(usdcCost * 1_000_000)).toString(),
@@ -234,9 +278,34 @@ export default function FlightOperationsConsole() {
       setIsSettled(true);
       setSettlementTxHash(data.settleTxHash);
 
+      // Executive Audit Certificate Data (Category 5)
+      const cert: SettlementCertificateData = {
+        flightId: data.flightId || `${callsign}-${Date.now()}`,
+        callsign,
+        airline: mode === "replay" ? activeScenario.airline : "Commercial Carrier",
+        airframe: mode === "replay" ? activeScenario.airframe : "Airbus A320 / Boeing 737",
+        originAirport: mode === "replay" ? activeScenario.originAirport : "DEP",
+        destinationAirport: mode === "replay" ? activeScenario.destinationAirport : "ARR",
+        destinationName: mode === "replay" ? activeScenario.destinationName : "Destination Airport",
+        runway: mode === "replay" ? activeScenario.runway : "01",
+        icao24: mode === "replay" ? activeScenario.icao24 : "0xLIVE",
+        airborneSeconds,
+        fuelBurnKg,
+        co2Kg,
+        costUSDC: usdcCost,
+        blockNumber: data.blockNumber,
+        txHash: data.settleTxHash,
+        explorerUrl: data.explorerUrl,
+        agentAddress: data.agentAddress || "0x1698fdA3A9A8Ca9530434e545986176579F01650",
+        vaultAddress: DEPLOYED_VAULT_ADDRESS,
+        timestamp: Date.now(),
+      };
+      setCertificateData(cert);
+      setIsCertificateOpen(true);
+
       toast.success("Wheels-Down Settled on Arc Testnet! 🛬", {
         id: toastId,
-        description: `${frame.callsign} reconciled on-chain. Block #${data.blockNumber} (Gas: ${data.gasUsed}).`,
+        description: `${callsign} reconciled on-chain. Block #${data.blockNumber} (Gas: ${data.gasUsed}).`,
         duration: 12000,
         action: {
           label: "View ArcScan",
@@ -263,13 +332,13 @@ export default function FlightOperationsConsole() {
     if (mode === "replay" && isPlaying) {
       timerRef.current = setInterval(() => {
         setReplayIndex((prev) => {
-          if (prev >= replayData.length - 1) {
+          if (prev >= activeReplayFrames.length - 1) {
             setIsPlaying(false);
             return prev;
           }
           const next = prev + 1;
-          const currentFrame = replayData[next];
-          const prevFrame = replayData[prev];
+          const currentFrame = activeReplayFrames[next];
+          const prevFrame = activeReplayFrames[prev];
 
           if (!prevFrame.onGround && currentFrame.onGround && !isSettled && !isSettling) {
             triggerWheelsDownSettlement(currentFrame);
@@ -283,16 +352,21 @@ export default function FlightOperationsConsole() {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [isPlaying, mode, replaySpeed, isSettled, isSettling]);
+  }, [isPlaying, mode, replaySpeed, isSettled, isSettling, activeReplayFrames]);
 
   // Replay Controls
   const handleTogglePlay = () => setIsPlaying((p) => !p);
   const handleStepForward = () => {
-    if (replayIndex < replayData.length - 1) {
+    if (replayIndex < activeReplayFrames.length - 1) {
       const next = replayIndex + 1;
       setReplayIndex(next);
-      if (!replayData[replayIndex].onGround && replayData[next].onGround && !isSettled && !isSettling) {
-        triggerWheelsDownSettlement(replayData[next]);
+      if (
+        !activeReplayFrames[replayIndex].onGround &&
+        activeReplayFrames[next].onGround &&
+        !isSettled &&
+        !isSettling
+      ) {
+        triggerWheelsDownSettlement(activeReplayFrames[next]);
       }
     }
   };
@@ -303,36 +377,13 @@ export default function FlightOperationsConsole() {
     setSettlementTxHash(undefined);
   };
   const handleJumpToTouchdown = () => {
-    // Frame index 16 is touchdown in replay-flight.json
-    setReplayIndex(16);
+    const tdIdx = activeScenario.touchdownIndex ?? (activeReplayFrames.length - 4);
+    setReplayIndex(tdIdx);
     setIsPlaying(false);
     if (!isSettled && !isSettling) {
-      triggerWheelsDownSettlement(replayData[16]);
+      triggerWheelsDownSettlement(activeReplayFrames[tdIdx]);
     }
   };
-
-  // Active Telemetry (Zero-Mock: renders null if no live flight is acquired yet)
-  const activeData =
-    mode === "replay"
-      ? activeReplayFrame
-      : selectedFlight ||
-        (liveFlights.length > 0 ? liveFlights[0] : null);
-
-  // ICAO Doc 9889 Emission Calculations
-  const altitudeFeet = activeData ? Math.round(activeData.baroAltitudeMeters * 3.28084) : 0;
-  const speedKnots = activeData ? Math.round(activeData.velocityMps * 1.94384) : 0;
-  const hourlyBurnKg = 2400; // ICAO Narrow-body benchmark (A320 / B737)
-  
-  // Waypoint Approach & Touchdown Tranche
-  const trancheMinutes = mode === "replay" ? Math.max(1, Math.round((replayIndex + 1) * 0.25)) : 5;
-  const fuelBurnKg = Math.round((trancheMinutes / 60) * hourlyBurnKg);
-  const co2Kg = Math.round(fuelBurnKg * 3.16); // ICAO standard emission factor
-  const usdcCost = Math.max(0.35, +((co2Kg / 1000) * 5.0).toFixed(2));
-
-  const isLanded =
-    mode === "replay"
-      ? activeReplayFrame.onGround || isSettled
-      : Boolean(activeData?.onGround);
 
   return (
     <div className="h-screen w-full bg-[#EBEBEB] text-black font-sans p-4 sm:p-6 flex flex-col gap-5 overflow-hidden select-none">
@@ -369,12 +420,51 @@ export default function FlightOperationsConsole() {
           </div>
         </div>
 
-        {/* Arc L1 & Privy Wallet */}
-        <div className="flex items-center gap-4 text-xs font-medium">
+        {/* Arc L1, Privy Wallet & Audit Certificate */}
+        <div className="flex items-center gap-3 text-xs font-medium">
           <div className="hidden sm:flex items-center gap-1.5 text-[11px] font-semibold text-[#666666] uppercase tracking-wider">
             <span>Arc Testnet:</span>
             <strong className="text-black font-bold">5042002 Connected</strong>
           </div>
+
+          {/* Executive Audit Certificate Quick Access (Category 5) */}
+          <button
+            type="button"
+            onClick={() => {
+              if (!certificateData) {
+                setCertificateData({
+                  flightId: `${activeScenario.callsign}-DOC9889`,
+                  callsign: activeScenario.callsign,
+                  airline: activeScenario.airline,
+                  airframe: activeScenario.airframe,
+                  originAirport: activeScenario.originAirport,
+                  destinationAirport: activeScenario.destinationAirport,
+                  destinationName: activeScenario.destinationName,
+                  runway: activeScenario.runway,
+                  icao24: activeScenario.icao24,
+                  airborneSeconds: activeScenario.plannedAirborneSeconds,
+                  fuelBurnKg,
+                  co2Kg,
+                  costUSDC: usdcCost,
+                  blockNumber: 61044782,
+                  txHash:
+                    settlementTxHash ||
+                    "0x6f74a81c4e127394c8b09ad3833d7122db529cbef2e6ea9b5f543666d3a3c10a",
+                  explorerUrl: settlementTxHash
+                    ? `https://testnet.arcscan.app/tx/${settlementTxHash}`
+                    : "https://testnet.arcscan.app",
+                  agentAddress: "0x1698fdA3A9A8Ca9530434e545986176579F01650",
+                  vaultAddress: DEPLOYED_VAULT_ADDRESS,
+                  timestamp: Date.now(),
+                });
+              }
+              setIsCertificateOpen(true);
+            }}
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-black/10 hover:border-black/25 text-black text-xs font-medium shadow-xs btn-tactile cursor-pointer"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-[#7C4DFF]" />
+            <span>Audit Certificate</span>
+          </button>
 
           {ready && authenticated && user?.wallet ? (
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white border border-black/10 shadow-sm text-xs font-mono">
@@ -437,7 +527,7 @@ export default function FlightOperationsConsole() {
               }`}
             >
               <Plane className="w-3.5 h-3.5" />
-              <span>DLH400 Replay Demo</span>
+              <span>Multi-Flight Replay</span>
             </button>
           </div>
 
@@ -446,19 +536,25 @@ export default function FlightOperationsConsole() {
             <div className="flex justify-between items-start mb-3">
               <div>
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-[#666666]">
-                  {mode === "replay" ? "Demonstration Flight" : "Active In-Flight Radar Target"}
+                  {mode === "replay"
+                    ? `${activeScenario.airline} · ${activeScenario.airframe}`
+                    : "Active In-Flight Radar Target"}
                 </span>
-                <div className="font-serif text-[32px] font-normal leading-none mt-1 flex items-center gap-2">
+                <div className="font-serif text-[30px] font-normal leading-none mt-1 flex items-center gap-2">
                   <span>
                     {mode === "replay"
-                      ? "DLH400"
+                      ? activeScenario.callsign
                       : activeData?.callsign || (isLiveLoading ? "Acquiring Signals..." : "Scanning Airspace...")}
                   </span>
-                  {mode === "live" && activeData && (
+                  {mode === "replay" ? (
+                    <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full bg-[#7C4DFF]/10 text-[#7C4DFF] border border-[#7C4DFF]/20">
+                      {activeScenario.category.replace("_", " ")}
+                    </span>
+                  ) : mode === "live" && activeData ? (
                     <span className="text-[10px] font-sans font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
                       LIVE
                     </span>
-                  )}
+                  ) : null}
                 </div>
               </div>
               <div className="text-right">
@@ -477,7 +573,7 @@ export default function FlightOperationsConsole() {
 
             <p className="text-xs text-[#666666] leading-relaxed">
               {mode === "replay"
-                ? "Lufthansa commercial descent entering Frankfurt (EDDF). Evaluates fuel dynamics and triggers zero-custody 1inch Aqua offset on Arc Testnet."
+                ? activeScenario.description
                 : "Continuous ADS-B transponder telemetry evaluated against ICAO Doc 9889 fuel consumption standards."}
             </p>
           </div>
@@ -486,38 +582,75 @@ export default function FlightOperationsConsole() {
           <div className="flex-1 bg-white rounded-2xl p-4 border border-black/5 shadow-sm flex flex-col min-h-0 overflow-hidden">
             {mode === "replay" ? (
               <div className="flex flex-col h-full justify-between gap-3">
-                <div>
-                  <div className="flex items-center justify-between text-xs font-mono mb-2">
-                    <span className="text-[#666666] font-semibold">WAYPOINT APPROACH</span>
-                    <span className="font-bold">
-                      Frame {String(replayIndex + 1).padStart(2, "0")} / {replayData.length}
-                    </span>
+                <div className="flex flex-col gap-2.5">
+                  {/* Multi-Flight Scenario Selector (Category 4) */}
+                  <div>
+                    <div className="flex justify-between items-center text-[10px] font-semibold uppercase tracking-wider text-[#666666] mb-1.5">
+                      <span>Select Commercial Scenario</span>
+                      <span className="font-mono text-neutral-400">ICAO Benchmarked</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1.5 p-1 bg-neutral-100 rounded-xl">
+                      {REPLAY_SCENARIOS.map((scenario, idx) => (
+                        <button
+                          key={scenario.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedScenarioIndex(idx);
+                            setReplayIndex(0);
+                            setIsPlaying(false);
+                            setIsSettled(false);
+                            setSettlementTxHash(undefined);
+                          }}
+                          className={`py-1.5 px-2 rounded-lg text-xs font-mono transition-all flex flex-col items-center justify-center cursor-pointer btn-tactile ${
+                            selectedScenarioIndex === idx
+                              ? "bg-white text-black font-bold shadow-xs border border-black/10"
+                              : "text-[#666666] hover:text-black font-medium"
+                          }`}
+                        >
+                          <span className="font-bold">{scenario.callsign}</span>
+                          <span className="text-[9px] font-sans text-neutral-500 truncate w-full text-center">
+                            {scenario.airframe.split(" ")[1] || scenario.airframe}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
-                  {/* Scrubber */}
-                  <input
-                    type="range"
-                    min={0}
-                    max={replayData.length - 1}
-                    value={replayIndex}
-                    onChange={(e) => {
-                      const idx = Number(e.target.value);
-                      setReplayIndex(idx);
-                      if (replayData[idx].onGround && !isSettled && !isSettling) {
-                        triggerWheelsDownSettlement(replayData[idx]);
-                      }
-                    }}
-                    className="w-full h-2 bg-neutral-200 rounded-lg appearance-none cursor-pointer accent-[#7C4DFF]"
-                  />
+                  {/* Scrubber and Frame counter */}
+                  <div>
+                    <div className="flex items-center justify-between text-xs font-mono mb-2">
+                      <span className="text-[#666666] font-semibold">WAYPOINT APPROACH</span>
+                      <span className="font-bold">
+                        Frame {String(replayIndex + 1).padStart(2, "0")} / {activeReplayFrames.length}
+                      </span>
+                    </div>
+
+                    <input
+                      type="range"
+                      min={0}
+                      max={activeReplayFrames.length - 1}
+                      value={replayIndex}
+                      onChange={(e) => {
+                        const idx = Number(e.target.value);
+                        setReplayIndex(idx);
+                        if (activeReplayFrames[idx].onGround && !isSettled && !isSettling) {
+                          triggerWheelsDownSettlement(activeReplayFrames[idx]);
+                        }
+                      }}
+                      className="w-full h-2 bg-neutral-200 rounded-lg appearance-none cursor-pointer accent-[#7C4DFF]"
+                    />
+                  </div>
 
                   {/* Status Banner */}
-                  <div className={`mt-3 p-3 rounded-xl flex items-center justify-between text-xs font-mono transition-colors ${
-                    isSettled
-                      ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-700"
-                      : isLanded
-                      ? "bg-[#FF5F1F]/10 border border-[#FF5F1F]/30 text-[#FF5F1F]"
-                      : "bg-neutral-100 text-neutral-700"
-                  }`}>
+                  <div
+                    className={`p-3 rounded-xl flex items-center justify-between text-xs font-mono transition-colors ${
+                      isSettled
+                        ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-700"
+                        : isLanded
+                        ? "bg-[#FF5F1F]/10 border border-[#FF5F1F]/30 text-[#FF5F1F]"
+                        : "bg-neutral-100 text-neutral-700"
+                    }`}
+                  >
                     <span className="font-bold">
                       {isSettling
                         ? "BROADCASTING SETTLEMENT..."
@@ -666,8 +799,8 @@ export default function FlightOperationsConsole() {
           </div>
         </section>
 
-        {/* ── CENTER COLUMN (5 Cols): Live Radar Map Canvas ── */}
-        <section className="lg:col-span-5 flex flex-col min-h-0">
+        {/* ── CENTER COLUMN (5 Cols): Live Radar Map Canvas & 1inch Aqua Pipeline ── */}
+        <section className="lg:col-span-5 flex flex-col gap-3 min-h-0">
           <div className="flex-1 bg-white rounded-2xl p-3 border border-black/5 shadow-sm flex flex-col min-h-0 relative overflow-hidden">
             {/* Map Header Overlay */}
             <div className="flex justify-between items-center mb-2 px-2 shrink-0">
@@ -682,13 +815,18 @@ export default function FlightOperationsConsole() {
             </div>
 
             {/* Fullscreen Map Canvas */}
-            <div className="flex-1 rounded-xl overflow-hidden border border-black/5 relative min-h-[260px]">
+            <div className="flex-1 rounded-xl overflow-hidden border border-black/5 relative min-h-[240px] isolate z-0">
               <WindyFlightMap
                 mode={mode}
                 liveFlights={liveFlights}
                 selectedFlight={selectedFlight}
                 replayFrame={mode === "replay" ? activeReplayFrame : null}
-                replayTrack={mode === "replay" ? replayData : []}
+                replayTrack={mode === "replay" ? activeReplayFrames : []}
+                destinationLabel={
+                  mode === "replay"
+                    ? `${activeScenario.destinationAirport} · ${activeScenario.destinationName}`
+                    : undefined
+                }
                 onSelectFlight={(flight) => {
                   if ("icao24" in flight) {
                     setSelectedFlight(flight as LiveFlightSummary);
@@ -698,6 +836,15 @@ export default function FlightOperationsConsole() {
               />
             </div>
           </div>
+
+          {/* 1inch Aqua Zero-Custody Pipeline (Category 2) */}
+          <AquaFlowVisualizer
+            isLanded={isLanded}
+            isSettled={isSettled}
+            isSettling={isSettling}
+            usdcAmount={usdcCost}
+            co2Kg={co2Kg}
+          />
         </section>
 
         {/* ── RIGHT COLUMN (3 Cols): Telemetry HUD, On-Chain Specs & Activity ── */}
@@ -753,17 +900,17 @@ export default function FlightOperationsConsole() {
                 <span className="text-[#666666]">Airframe</span>
                 <span className="font-semibold text-black">
                   {mode === "replay"
-                    ? "A320 / B737"
+                    ? activeScenario.airframe
                     : (activeData as any)?.equipmentType || "Commercial Aircraft"}
                 </span>
               </div>
               <div className="flex justify-between items-baseline py-1.5 border-b border-black/5">
                 <span className="text-[#666666]">Transponder</span>
                 <span className="font-semibold font-mono text-black">
-                  {activeData && "icao24" in activeData && activeData.icao24
+                  {mode === "replay"
+                    ? `0x${activeScenario.icao24.toUpperCase()}`
+                    : activeData && "icao24" in activeData && activeData.icao24
                     ? `0x${(activeData as any).icao24.toUpperCase()}`
-                    : mode === "replay"
-                    ? "0x3C6544"
                     : "ACQUIRING..."}
                 </span>
               </div>
@@ -806,13 +953,19 @@ export default function FlightOperationsConsole() {
                   <div className="flex justify-between items-start text-[13px]">
                     <div>
                       <div className="font-bold text-black flex items-center gap-1.5">
-                        <span>DLH400 · FRA</span>
+                        <span>
+                          {mode === "replay"
+                            ? `${activeScenario.callsign} · ${activeScenario.destinationAirport}`
+                            : "DLH400 · FRA"}
+                        </span>
                         <span className="text-[9px] px-1.5 py-0.5 rounded font-mono font-bold bg-emerald-500 text-white">
                           JUST SETTLED
                         </span>
                       </div>
                       <div className="text-[10px] text-[#666666] mt-0.5 font-mono">
-                        Lufthansa A320 · Touchdown Reconciled
+                        {mode === "replay"
+                          ? `${activeScenario.airline} ${activeScenario.airframe.split(" ")[0]} · Touchdown Reconciled`
+                          : "Lufthansa A320 · Touchdown Reconciled"}
                       </div>
                     </div>
                     <div className="text-right font-mono">
@@ -836,6 +989,18 @@ export default function FlightOperationsConsole() {
                       <ExternalLink className="w-2.5 h-2.5" />
                     </a>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (certificateData) {
+                        setIsCertificateOpen(true);
+                      }
+                    }}
+                    className="mt-2 w-full py-1.5 rounded-lg bg-black hover:bg-neutral-800 text-white text-[11px] font-semibold flex items-center justify-center gap-1.5 btn-tactile cursor-pointer"
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>View ICAO Audit Certificate</span>
+                  </button>
                 </div>
               )}
 
@@ -843,7 +1008,61 @@ export default function FlightOperationsConsole() {
               {onChainEvents.map((evt, idx) => (
                 <div key={idx} className="p-2.5 rounded-xl bg-neutral-50/70 border border-black/5 hover:border-black/15 transition-colors">
                   <div className="flex justify-between items-center font-mono">
-                    <span className="font-bold text-black">{evt.callsign}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-black">{evt.callsign}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const isDLH = evt.callsign.startsWith("DLH");
+                          const isBAW = evt.callsign.startsWith("BAW");
+                          const isUAE = evt.callsign.startsWith("UAE");
+                          setCertificateData({
+                            flightId: evt.flightId || `${evt.callsign}-${evt.blockNumber}`,
+                            callsign: evt.callsign,
+                            airline: isDLH
+                              ? "Lufthansa"
+                              : isBAW
+                              ? "British Airways"
+                              : isUAE
+                              ? "Emirates"
+                              : "Commercial Carrier",
+                            airframe: isDLH
+                              ? "Airbus A320-200"
+                              : isBAW
+                              ? "Airbus A350-1000"
+                              : isUAE
+                              ? "Airbus A380-800"
+                              : "Airbus A320",
+                            originAirport: isDLH ? "MUC" : isBAW ? "SIN" : isUAE ? "DXB" : "DEP",
+                            destinationAirport: isDLH ? "EDDF" : isBAW ? "EGLL" : isUAE ? "KJFK" : "ARR",
+                            destinationName: isDLH
+                              ? "Frankfurt Main"
+                              : isBAW
+                              ? "London Heathrow"
+                              : isUAE
+                              ? "John F. Kennedy Intl"
+                              : "Destination Airport",
+                            runway: isDLH ? "25L" : isBAW ? "27R" : isUAE ? "13L" : "01",
+                            icao24: isDLH ? "3c6544" : isBAW ? "40751a" : isUAE ? "8964f1" : "3c6544",
+                            airborneSeconds: evt.airborneSeconds || 3600,
+                            fuelBurnKg: Math.round(evt.co2Kg / 3.16),
+                            co2Kg: evt.co2Kg,
+                            costUSDC: evt.usdcAmount,
+                            blockNumber: evt.blockNumber,
+                            txHash: evt.txHash,
+                            explorerUrl: `https://testnet.arcscan.app/tx/${evt.txHash}`,
+                            agentAddress: "0x1698fdA3A9A8Ca9530434e545986176579F01650",
+                            vaultAddress: DEPLOYED_VAULT_ADDRESS,
+                            timestamp: Date.now(),
+                          });
+                          setIsCertificateOpen(true);
+                        }}
+                        className="text-[9px] text-[#007AFF] hover:underline flex items-center gap-0.5 cursor-pointer"
+                      >
+                        <ShieldCheck className="w-2.5 h-2.5" />
+                        <span>Audit Cert</span>
+                      </button>
+                    </div>
                     <span className="text-[10px] font-bold text-emerald-600">
                       {evt.co2Kg} kg CO₂
                     </span>
@@ -891,6 +1110,13 @@ export default function FlightOperationsConsole() {
           <span>LATENCY: {rpcLatencyMs !== null ? `${rpcLatencyMs}ms` : "PULLING"}</span>
         </div>
       </footer>
+
+      {/* ── EXECUTIVE FLIGHT SETTLEMENT CERTIFICATE MODAL (Category 5) ── */}
+      <SettlementCertificateModal
+        isOpen={isCertificateOpen}
+        onClose={() => setIsCertificateOpen(false)}
+        data={certificateData}
+      />
     </div>
   );
 }

@@ -20,6 +20,7 @@ interface WindyFlightMapProps {
   selectedFlight: LiveFlightSummary | ReplayFrame | null;
   replayFrame: ReplayFrame | null;
   replayTrack: ReplayFrame[];
+  destinationLabel?: string;
   onSelectFlight: (flight: LiveFlightSummary | ReplayFrame) => void;
 }
 
@@ -29,6 +30,7 @@ export default function WindyFlightMap({
   selectedFlight,
   replayFrame,
   replayTrack,
+  destinationLabel,
   onSelectFlight,
 }: WindyFlightMapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -193,8 +195,17 @@ export default function WindyFlightMap({
         return;
       }
 
-      // Draw Descent Corridor Polyline
-      if (replayTrack.length > 0 && !replayPolylineRef.current) {
+      // If replay track exists, update or recreate polyline
+      if (replayTrack && replayTrack.length > 0) {
+        if (replayPolylineRef.current) {
+          mapInstanceRef.current.removeLayer(replayPolylineRef.current);
+          replayPolylineRef.current = null;
+        }
+        if (touchdownMarkerRef.current) {
+          mapInstanceRef.current.removeLayer(touchdownMarkerRef.current);
+          touchdownMarkerRef.current = null;
+        }
+
         const latlngs: [number, number][] = replayTrack.map((f) => [f.latitude, f.longitude]);
 
         const polyline = L.polyline(latlngs, {
@@ -207,7 +218,7 @@ export default function WindyFlightMap({
 
         replayPolylineRef.current = polyline;
 
-        // Frankfurt Airport Touchdown Ring
+        // Destination Airport Touchdown Ring
         const lastFrame = replayTrack[replayTrack.length - 1];
         const tdIcon = L.divIcon({
           html: `
@@ -221,19 +232,20 @@ export default function WindyFlightMap({
           iconAnchor: [16, 16],
         });
 
+        const label = destinationLabel || "Touchdown Target";
         touchdownMarkerRef.current = L.marker([lastFrame.latitude, lastFrame.longitude], {
           icon: tdIcon,
           zIndexOffset: 500,
         })
           .bindTooltip(
-            `<div style="font-family: monospace; font-size: 11px;">
-              <strong style="color: #4C63ED;">EDDF / FRA</strong> Touchdown Target
+            `<div style="font-family: monospace; font-size: 11px; padding: 2px 4px;">
+              <strong style="color: #4C63ED;">${label}</strong>
             </div>`,
             { permanent: true, direction: "bottom", offset: [0, 10] }
           )
           .addTo(mapInstanceRef.current);
 
-        mapInstanceRef.current.fitBounds(polyline.getBounds(), { padding: [80, 80] });
+        mapInstanceRef.current.fitBounds(polyline.getBounds(), { padding: [60, 60] });
       }
 
       // Update Moving Replay Airplane Marker
@@ -269,10 +281,10 @@ export default function WindyFlightMap({
         }
       }
     });
-  }, [mode, replayFrame, replayTrack]);
+  }, [mode, replayFrame, replayTrack, destinationLabel]);
 
   return (
-    <div className="relative w-full h-full min-h-[200px] bg-[#0B0F19]">
+    <div className="relative w-full h-full min-h-[200px] bg-[#0B0F19] isolate z-0">
       <div ref={mapContainerRef} className="w-full h-full" />
     </div>
   );
