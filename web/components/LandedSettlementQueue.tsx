@@ -43,89 +43,8 @@ export interface LandedFlightRecord {
   explorerUrl?: string;
 }
 
-// Initial realistic recently-landed flights for instant demo capability
-export const INITIAL_LANDED_FLIGHTS: LandedFlightRecord[] = [
-  {
-    id: "dlh400-jfk",
-    callsign: "DLH400",
-    icao24: "3c6674",
-    operator: "Lufthansa German Airlines",
-    origin: "Frankfurt Int'l (EDDF)",
-    destination: "New York JFK (KJFK)",
-    airframe: AIRFRAME_PROFILES.A359,
-    landedAt: "12 mins ago",
-    airborneSeconds: 28800, // 8h 00m
-    distanceKm: 6200,
-    estimate: calculateLandedFlightSettlement({
-      callsign: "DLH400",
-      icao24: "3c6674",
-      airframe: AIRFRAME_PROFILES.A359,
-      airborneSeconds: 28800,
-      distanceKm: 6200,
-    }),
-    status: "PENDING",
-  },
-  {
-    id: "baw117-jfk",
-    callsign: "BAW117",
-    icao24: "40082c",
-    operator: "British Airways",
-    origin: "London Heathrow (EGLL)",
-    destination: "New York JFK (KJFK)",
-    airframe: AIRFRAME_PROFILES.B77W,
-    landedAt: "28 mins ago",
-    airborneSeconds: 27000, // 7h 30m
-    distanceKm: 5550,
-    estimate: calculateLandedFlightSettlement({
-      callsign: "BAW117",
-      icao24: "40082c",
-      airframe: AIRFRAME_PROFILES.B77W,
-      airborneSeconds: 27000,
-      distanceKm: 5550,
-    }),
-    status: "PENDING",
-  },
-  {
-    id: "uae201-jfk",
-    callsign: "UAE201",
-    icao24: "8964d8",
-    operator: "Emirates",
-    origin: "Dubai Int'l (OMDB)",
-    destination: "New York JFK (KJFK)",
-    airframe: AIRFRAME_PROFILES.A388,
-    landedAt: "45 mins ago",
-    airborneSeconds: 50400, // 14h 00m
-    distanceKm: 11000,
-    estimate: calculateLandedFlightSettlement({
-      callsign: "UAE201",
-      icao24: "8964d8",
-      airframe: AIRFRAME_PROFILES.A388,
-      airborneSeconds: 50400,
-      distanceKm: 11000,
-    }),
-    status: "PENDING",
-  },
-  {
-    id: "afr1248-cdg",
-    callsign: "AFR1248",
-    icao24: "3949e2",
-    operator: "Air France",
-    origin: "Nice Côte d'Azur (LFMN)",
-    destination: "Paris Charles de Gaulle (LFPG)",
-    airframe: AIRFRAME_PROFILES.A320,
-    landedAt: "1 hour ago",
-    airborneSeconds: 5400, // 1h 30m
-    distanceKm: 700,
-    estimate: calculateLandedFlightSettlement({
-      callsign: "AFR1248",
-      icao24: "3949e2",
-      airframe: AIRFRAME_PROFILES.A320,
-      airborneSeconds: 5400,
-      distanceKm: 700,
-    }),
-    status: "PENDING",
-  },
-];
+// Live ADS-B Ground Transponder Telemetry (Zero-Mock: dynamically populated from airport receivers)
+export const INITIAL_LANDED_FLIGHTS: LandedFlightRecord[] = [];
 
 export interface LandedSettlementQueueProps {
   onSettlementSuccess?: (txHash: string, flight: LandedFlightRecord) => void;
@@ -142,8 +61,11 @@ export default function LandedSettlementQueue({
   flights: externalFlights,
   onFlightsChange,
 }: LandedSettlementQueueProps) {
-  const [internalFlights, setInternalFlights] = useState<LandedFlightRecord[]>(INITIAL_LANDED_FLIGHTS);
-  const flights = externalFlights || internalFlights;
+  const [internalFlights, setInternalFlights] = useState<LandedFlightRecord[]>([]);
+  const [isLoadingLanded, setIsLoadingLanded] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
+
+  const flights = externalFlights !== undefined ? externalFlights : internalFlights;
   const setFlights = (updater: React.SetStateAction<LandedFlightRecord[]>) => {
     if (typeof updater === "function") {
       const next = updater(flights);
@@ -154,6 +76,41 @@ export default function LandedSettlementQueue({
       setInternalFlights(updater);
     }
   };
+
+  // Poll real landed aircraft from airport ADS-B ground receivers
+  const fetchLiveLanded = async () => {
+    try {
+      setIsLoadingLanded(true);
+      const res = await fetch("/api/landed-flights");
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data.flights) && data.flights.length > 0) {
+        setFlights((prev) => {
+          const settledMap = new Map(
+            prev.filter((f) => f.status === "SETTLED").map((f) => [f.id, f])
+          );
+          const merged: LandedFlightRecord[] = data.flights.map((f: LandedFlightRecord) => {
+            return settledMap.get(f.id) || f;
+          });
+          const existingSettled = prev.filter(
+            (f) => f.status === "SETTLED" && !merged.some((m) => m.id === f.id)
+          );
+          return [...existingSettled, ...merged];
+        });
+        setLastSyncTime(new Date().toLocaleTimeString());
+      }
+    } catch (err) {
+      console.warn("Live landed radar poll notice:", err);
+    } finally {
+      setIsLoadingLanded(false);
+    }
+  };
+
+  React.useEffect(() => {
+    fetchLiveLanded();
+    const interval = setInterval(fetchLiveLanded, 25000);
+    return () => clearInterval(interval);
+  }, []);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"ALL" | "PENDING" | "SETTLED">("ALL");
   const [isBatchSettling, setIsBatchSettling] = useState(false);
@@ -303,17 +260,26 @@ export default function LandedSettlementQueue({
       {/* Top Banner: Queue Overview & Batch Trigger */}
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-6 border-b border-white/10 font-mono">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400">
+          <div className="flex items-center gap-3">
+            <span className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400">
               <Clock className="w-5 h-5" />
             </span>
-            <h2 className="text-xl font-bold tracking-wide">
-              Landed Aircraft (Pending Settlement Queue)
-            </h2>
+            <div>
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h2 className="text-xl font-bold tracking-wide">
+                  Landed Aircraft (Pending Settlement Queue)
+                </h2>
+                <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 text-[10.5px] font-mono font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>Live ADS-B Ground Radar</span>
+                </div>
+              </div>
+              <p className="text-xs text-zinc-400 mt-1">
+                Verified commercial aircraft on airport tarmac (EDDF, LFPG, EGLL, EHAM) awaiting SwapVM curve settlement
+                {lastSyncTime && <span className="ml-2 text-zinc-500">· Synced {lastSyncTime}</span>}
+              </p>
+            </div>
           </div>
-          <p className="text-xs text-zinc-400 mt-1">
-            Flights with verified wheels-down touchdown awaiting SwapVM curve reconciliation & on-chain retirement
-          </p>
         </div>
 
         {/* Aggregate Stats & Batch CTA */}
@@ -342,6 +308,15 @@ export default function LandedSettlementQueue({
               {totalPendingCo2Tonnes} t CO₂ • ${totalPendingCostUSDC} USDC
             </div>
           </div>
+
+          <button
+            onClick={fetchLiveLanded}
+            disabled={isLoadingLanded}
+            className="p-2.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 hover:text-white transition-colors cursor-pointer"
+            title="Refresh Live Ground Radar"
+          >
+            <RefreshCw className={`w-4 h-4 ${isLoadingLanded ? "animate-spin text-emerald-400" : ""}`} />
+          </button>
 
           <button
             onClick={handleBatchSettleAll}
@@ -402,8 +377,39 @@ export default function LandedSettlementQueue({
         </div>
       </div>
 
-      {/* Flight Cards Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {/* Flight Cards Grid or Radar Scanning Empty State */}
+      {filteredFlights.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 px-4 rounded-2xl bg-[#141A2B]/40 border border-white/5 text-center font-mono">
+          {isLoadingLanded ? (
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-8 h-8 rounded-full border-2 border-emerald-500/30 border-t-emerald-400 animate-spin" />
+              <div className="text-sm font-semibold text-zinc-200">
+                Scanning Airport Surface ADS-B Receivers...
+              </div>
+              <div className="text-xs text-zinc-500">
+                Querying live wheels-down aircraft at Frankfurt (EDDF), Paris (LFPG), London (EGLL)
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-2">
+              <Plane className="w-8 h-8 text-zinc-600 mb-1" />
+              <div className="text-sm font-semibold text-zinc-300">
+                No Landed Aircraft Matching Filter
+              </div>
+              <div className="text-xs text-zinc-500">
+                Click refresh to poll active airport ground transponders across European hubs
+              </div>
+              <button
+                onClick={fetchLiveLanded}
+                className="mt-3 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-xs text-white cursor-pointer"
+              >
+                Scan Surface Radar
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {filteredFlights.map((flight) => {
           const isPending = flight.status === "PENDING";
           const isSettling = flight.status === "SETTLING";
@@ -570,7 +576,8 @@ export default function LandedSettlementQueue({
             </div>
           );
         })}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

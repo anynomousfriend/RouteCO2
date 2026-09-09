@@ -66,6 +66,12 @@ export function resolveAirframe(typeCode?: string | null, callsign?: string | nu
   if (typeCode) {
     const clean = typeCode.trim().toUpperCase();
     if (AIRFRAME_PROFILES[clean]) return AIRFRAME_PROFILES[clean];
+    if (clean === "BCS3" || clean === "BCS1") return AIRFRAME_PROFILES.A220;
+    if (clean === "A20N") return AIRFRAME_PROFILES.A320;
+    if (clean === "A21N") return AIRFRAME_PROFILES.A321;
+    if (clean === "B38M" || clean === "B39M") return AIRFRAME_PROFILES.B738;
+    if (clean === "B77L" || clean === "B77F") return AIRFRAME_PROFILES.B77W;
+    if (clean === "A332") return AIRFRAME_PROFILES.A333;
     // Check partial prefix (e.g. A320N -> A320)
     for (const key of Object.keys(AIRFRAME_PROFILES)) {
       if (clean.startsWith(key) || key.startsWith(clean)) return AIRFRAME_PROFILES[key];
@@ -152,7 +158,7 @@ export interface LandedFlightSettlementEstimate {
   totalFuelBurnKg: number;
   totalCo2Kg: number;
   usdcCost: number;
-  usdcAmountMicro: bigint;
+  usdcAmountMicro: bigint | string;
   swapVmBytecode: `0x${string}`;
 }
 

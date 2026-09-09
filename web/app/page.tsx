@@ -244,9 +244,37 @@ export default function FlightOperationsConsole() {
 
     fetchLiveFlights();
     const interval = setInterval(fetchLiveFlights, 12000);
+
+    const fetchLiveLanded = async () => {
+      try {
+        const res = await fetch("/api/landed-flights");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (isMounted && Array.isArray(data.flights) && data.flights.length > 0) {
+          setLandedFlights((prev) => {
+            const settledMap: Record<string, LandedFlightRecord> = {};
+            prev.forEach((f) => {
+              if (f.status === "SETTLED") settledMap[f.id] = f;
+            });
+            const merged = data.flights.map((f: LandedFlightRecord) => settledMap[f.id] || f);
+            const existingSettled = prev.filter(
+              (f) => f.status === "SETTLED" && !merged.some((m: LandedFlightRecord) => m.id === f.id)
+            );
+            return [...existingSettled, ...merged];
+          });
+        }
+      } catch (err) {
+        console.warn("Live landed poll notice:", err);
+      }
+    };
+
+    fetchLiveLanded();
+    const landedInterval = setInterval(fetchLiveLanded, 25000);
+
     return () => {
       isMounted = false;
       clearInterval(interval);
+      clearInterval(landedInterval);
     };
   }, []);
 
