@@ -135,7 +135,7 @@ The global aviation industry contributes **over 1 billion tonnes of CO₂ annual
 ## 4. Key Features & Capabilities
 
 ### 🌐 3D CesiumJS Digital Earth Engine
-Implemented following the architecture and mathematics of [`flight-tracking-3d-implementation-guide.md`](flight-tracking-3d-implementation-guide.md):
+High-precision aerospace telemetry and interpolation architecture:
 1. **30-Second Render-Behind Playback** ([`web/lib/motion-engine.ts`](web/lib/motion-engine.ts)):
    Renders transponder fixes at `now - 30s` with Hermite/linear interpolation between verified fixes, completely eliminating rubber-banding and snap-back.
 2. **Constant-Rate-Turn (CRT) ENU Arc Extrapolation**:
