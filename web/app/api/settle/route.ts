@@ -11,6 +11,8 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
+export const dynamic = "force-dynamic";
+
 // Arc Testnet Chain Definition (Chain ID 5042002)
 const arcTestnet = defineChain({
   id: 5042002,

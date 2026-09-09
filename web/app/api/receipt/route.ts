@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createPublicClient, http, defineChain, type Hex } from "viem";
 
+export const dynamic = "force-dynamic";
+
 const arcTestnet = defineChain({
   id: 5042002,
   name: "Arc Testnet",

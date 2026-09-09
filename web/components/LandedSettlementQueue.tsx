@@ -130,13 +130,15 @@ export const INITIAL_LANDED_FLIGHTS: LandedFlightRecord[] = [
 export interface LandedSettlementQueueProps {
   onSettlementSuccess?: (txHash: string, flight: LandedFlightRecord) => void;
   activeSessionCap?: number;
+  onOpenSessionModal?: () => void;
   flights?: LandedFlightRecord[];
   onFlightsChange?: (flights: LandedFlightRecord[]) => void;
 }
 
 export default function LandedSettlementQueue({
   onSettlementSuccess,
-  activeSessionCap = 500,
+  activeSessionCap = 5000,
+  onOpenSessionModal,
   flights: externalFlights,
   onFlightsChange,
 }: LandedSettlementQueueProps) {
@@ -186,7 +188,13 @@ export default function LandedSettlementQueue({
     // Budget check against active session cap
     if (flight.estimate.usdcCost > activeSessionCap) {
       toast.error("Delegated Session Budget Exceeded", {
-        description: `Required offset ($${flight.estimate.usdcCost} USDC) exceeds your active session cap ($${activeSessionCap} USDC). Increase cap in Session Delegation.`,
+        description: `Required offset ($${flight.estimate.usdcCost.toLocaleString()} USDC) exceeds your active session cap ($${activeSessionCap.toLocaleString()} USDC). Increase cap in Session Delegation.`,
+        action: onOpenSessionModal
+          ? {
+              label: "Increase Cap",
+              onClick: () => onOpenSessionModal(),
+            }
+          : undefined,
       });
       return;
     }
@@ -309,7 +317,25 @@ export default function LandedSettlementQueue({
         </div>
 
         {/* Aggregate Stats & Batch CTA */}
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="bg-black/40 px-3.5 py-2 rounded-2xl border border-white/10 flex items-center gap-2.5 font-mono">
+            <ShieldCheck className="w-4 h-4 text-purple-400 shrink-0" />
+            <div>
+              <div className="text-[10px] text-zinc-400 uppercase tracking-wider">Session Cap</div>
+              <div className="text-xs font-bold text-white tabular-nums flex items-center gap-1.5">
+                <span>${activeSessionCap.toLocaleString()} USDC</span>
+                {onOpenSessionModal && (
+                  <button
+                    onClick={onOpenSessionModal}
+                    className="px-1.5 py-0.5 rounded bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 text-[10px] font-mono border border-purple-500/40 transition-colors cursor-pointer"
+                  >
+                    Adjust
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
           <div className="bg-black/40 px-4 py-2 rounded-2xl border border-white/10 text-right">
             <div className="text-[10px] text-zinc-400 uppercase tracking-wider">Unsettled Carbon / Cost</div>
             <div className="text-sm font-bold text-emerald-400 tabular-nums">
@@ -320,7 +346,7 @@ export default function LandedSettlementQueue({
           <button
             onClick={handleBatchSettleAll}
             disabled={isBatchSettling || pendingCount === 0}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-black font-bold text-xs transition-[transform,opacity] duration-140 active:scale-95 shadow-lg"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-black font-bold text-xs transition-[transform,opacity] duration-140 active:scale-95 shadow-lg cursor-pointer"
           >
             <Sparkles className="w-4 h-4" />
             <span>{isBatchSettling ? "Batch Settling..." : `Batch Settle All (${pendingCount})`}</span>
@@ -509,18 +535,36 @@ export default function LandedSettlementQueue({
                     )}
                   </div>
                 ) : (
-                  <button
-                    onClick={() => handleSettleFlight(flight)}
-                    disabled={isSettling}
-                    className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-black font-bold text-xs transition-[transform,opacity] duration-140 active:scale-[0.98] shadow-lg"
-                  >
-                    <Zap className="w-4 h-4" />
-                    <span>
-                      {isSettling
-                        ? "Broadcasting to Arc Testnet..."
-                        : `Settle Carbon Offset ($${flight.estimate.usdcCost.toFixed(2)} USDC)`}
-                    </span>
-                  </button>
+                  <>
+                    {flight.estimate.usdcCost > activeSessionCap && (
+                      <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] mb-2 font-mono">
+                        <div className="flex items-center gap-1.5">
+                          <ShieldCheck className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                          <span>Exceeds cap (${activeSessionCap.toLocaleString()} USDC)</span>
+                        </div>
+                        {onOpenSessionModal && (
+                          <button
+                            onClick={onOpenSessionModal}
+                            className="underline hover:text-white font-semibold text-amber-200 cursor-pointer text-[10px]"
+                          >
+                            Increase Cap →
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    <button
+                      onClick={() => handleSettleFlight(flight)}
+                      disabled={isSettling}
+                      className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-black font-bold text-xs transition-[transform,opacity] duration-140 active:scale-[0.98] shadow-lg cursor-pointer"
+                    >
+                      <Zap className="w-4 h-4" />
+                      <span>
+                        {isSettling
+                          ? "Broadcasting to Arc Testnet..."
+                          : `Settle Carbon Offset ($${flight.estimate.usdcCost.toFixed(2)} USDC)`}
+                      </span>
+                    </button>
+                  </>
                 )}
               </div>
             </div>

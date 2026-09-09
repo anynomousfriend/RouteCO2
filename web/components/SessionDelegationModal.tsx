@@ -88,7 +88,7 @@ export function SessionDelegationModal({
 
   if (!isOpen) return null;
 
-  const quickCaps = [250, 500, 1000, 2500];
+  const quickCaps = [500, 1000, 3000, 5000, 10000];
   const quickHours = [4, 8, 24];
 
   return (
@@ -272,7 +272,7 @@ export function SessionDelegationModal({
                         : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200 hover:text-black"
                     }`}
                   >
-                    ${cap}
+                    ${cap >= 1000 ? `${cap / 1000}k` : cap}
                   </button>
                 ))}
               </div>

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOpenSkyBearerToken } from "@/lib/opensky-auth";
 
+export const dynamic = "force-dynamic";
+
 import { type LiveFlightSummary } from "@/lib/replay-scenarios";
 export type { LiveFlightSummary };
 

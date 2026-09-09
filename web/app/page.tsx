@@ -137,7 +137,7 @@ export default function FlightOperationsConsole() {
   const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
   const [sessionData, setSessionData] = useState<SessionDelegationData>({
     status: "Active / Delegated",
-    budgetCapUSDC: 500,
+    budgetCapUSDC: 5000,
     expiryHours: 8,
     expiresAt: Date.now() + 8 * 3600 * 1000,
     targetVaultAddress: DEPLOYED_VAULT_ADDRESS,
@@ -332,6 +332,10 @@ export default function FlightOperationsConsole() {
         )} USDC) exceeds delegated session budget cap ($${sessionData.budgetCapUSDC.toFixed(
           2
         )} USDC).`,
+        action: {
+          label: "Increase Cap",
+          onClick: () => setIsSessionModalOpen(true),
+        },
       });
       return;
     }
@@ -647,6 +651,7 @@ export default function FlightOperationsConsole() {
               flights={landedFlights}
               onFlightsChange={setLandedFlights}
               activeSessionCap={sessionData.budgetCapUSDC}
+              onOpenSessionModal={() => setIsSessionModalOpen(true)}
               onSettlementSuccess={(txHash, flight) => {
                 fetchBalance();
                 fetchCarbonCredits();
