@@ -30,6 +30,10 @@ import LandedSettlementQueue, {
   type LandedFlightRecord,
 } from "../components/LandedSettlementQueue";
 import {
+  getStoredSettledFlights,
+  mergeWithStoredSettled,
+} from "../lib/settled-storage";
+import {
   AIRFRAME_PROFILES,
   DEFAULT_AIRFRAME,
   calculateLandedFlightSettlement,
@@ -79,6 +83,13 @@ export default function FlightOperationsConsole() {
   const [armedFlightCallsign, setArmedFlightCallsign] = useState<string | null>(null);
   const [landedFlights, setLandedFlights] = useState<LandedFlightRecord[]>(INITIAL_LANDED_FLIGHTS);
   const landedPendingCount = landedFlights.filter((f) => f.status === "PENDING").length;
+
+  useEffect(() => {
+    const stored = getStoredSettledFlights();
+    if (stored.length > 0) {
+      setLandedFlights((prev) => (prev.length === 0 ? stored : mergeWithStoredSettled(prev)));
+    }
+  }, []);
 
   const handleToggleArmSettlement = (callsign: string) => {
     if (armedFlightCallsign === callsign.toLowerCase()) {
@@ -251,16 +262,8 @@ export default function FlightOperationsConsole() {
         if (!res.ok) return;
         const data = await res.json();
         if (isMounted && Array.isArray(data.flights) && data.flights.length > 0) {
-          setLandedFlights((prev) => {
-            const settledMap: Record<string, LandedFlightRecord> = {};
-            prev.forEach((f) => {
-              if (f.status === "SETTLED") settledMap[f.id] = f;
-            });
-            const merged = data.flights.map((f: LandedFlightRecord) => settledMap[f.id] || f);
-            const existingSettled = prev.filter(
-              (f) => f.status === "SETTLED" && !merged.some((m: LandedFlightRecord) => m.id === f.id)
-            );
-            return [...existingSettled, ...merged];
+          setLandedFlights(() => {
+            return mergeWithStoredSettled(data.flights);
           });
         }
       } catch (err) {
