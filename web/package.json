@@ -12,7 +12,9 @@
   "dependencies": {
     "@number-flow/react": "^0.5.5",
     "@privy-io/react-auth": "^2.4.0",
+    "cesium": "^1.145.0",
     "clsx": "^2.1.1",
+    "egm96-universal": "^1.1.1",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.475.0",
     "next": "15.1.7",
@@ -28,6 +30,7 @@
     "@types/node": "^22.13.0",
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
+    "agentation": "^3.0.2",
     "postcss": "^8.5.1",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.3"

@@ -3,6 +3,7 @@
 @tailwind utilities;
 
 @import "leaflet/dist/leaflet.css";
+@import "cesium/Build/Cesium/Widgets/widgets.css";
 
 :root {
   --bg-main: #EBEBEB;

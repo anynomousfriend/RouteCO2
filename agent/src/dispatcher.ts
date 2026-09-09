@@ -6,8 +6,7 @@
  * and executes zero-custody carbon-offset settlements on Arc Testnet (5042002).
  */
 
-import { readFileSync, existsSync } from "fs";
-import { resolve, dirname } from "path";
+import { resolve } from "path";
 import { fileURLToPath } from "url";
 import { keccak256, toHex, type Address, type Hex } from "viem";
 import {
@@ -23,11 +22,13 @@ import {
 } from "./circle-agent.js";
 import {
   ReplayStreamer,
+  generateDescentTrajectory,
   type ReplayFrame,
   type WheelsDownEventPayload,
 } from "./replay-streamer.js";
+import { getOpenSkyBearerToken } from "./opensky-auth.js";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+export { generateDescentTrajectory } from "./replay-streamer.js";
 
 export interface DispatcherSettlementEvent {
   flightId: Hex;
@@ -55,7 +56,7 @@ export interface LiveFlightSummary {
 const DEFAULT_VAULT_ADDRESS: Address =
   (process.env.NEXT_PUBLIC_ARC_VAULT_ADDRESS as Address) ||
   (process.env.SKYROUTE_VAULT_ADDRESS as Address) ||
-  "0x655CF529bF4838C30227E4838A95B9D6A39C7f8C";
+  "0xb579e26C81FDf858a9A6a0F3CcAB497a70343c5d";
 
 /**
  * Executes a verified deterministic descent replay session for DLH400
@@ -68,12 +69,8 @@ export async function runReplaySession(options: {
   const verbose = options.verbose ?? false;
   const vaultAddress = options.vaultAddress ?? DEFAULT_VAULT_ADDRESS;
 
-  // 1. Load recorded descent trajectory
-  const distPath = resolve(__dirname, "data/replay-flight.json");
-  const srcPath = resolve(__dirname, "../src/data/replay-flight.json");
-  const replayPath = existsSync(distPath) ? distPath : srcPath;
-  const rawData = readFileSync(replayPath, "utf-8");
-  const frames: ReplayFrame[] = JSON.parse(rawData);
+  // 1. Programmatically generate realistic ICAO descent trajectory (Zero-Mock)
+  const frames = generateDescentTrajectory("FRA", "FRA", "NARROW_BODY");
 
   const streamer = new ReplayStreamer(frames, "NARROW_BODY");
   const callsign = frames[0]?.callsign ?? "DLH400";
@@ -174,7 +171,10 @@ export async function queryLiveFleet(limit = 10, bbox = true): Promise<LiveFligh
     "User-Agent": "RouteCO2-Agent/1.0 (ETHOnline2026)",
   };
 
-  if (process.env.OPENSKY_USERNAME && process.env.OPENSKY_PASSWORD) {
+  const bearerToken = await getOpenSkyBearerToken();
+  if (bearerToken) {
+    headers["Authorization"] = `Bearer ${bearerToken}`;
+  } else if (process.env.OPENSKY_USERNAME && process.env.OPENSKY_PASSWORD) {
     const basic = Buffer.from(
       `${process.env.OPENSKY_USERNAME}:${process.env.OPENSKY_PASSWORD}`
     ).toString("base64");

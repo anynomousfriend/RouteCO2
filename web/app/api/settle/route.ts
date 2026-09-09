@@ -33,6 +33,7 @@ const SKYROUTE_VAULT_ABI = [
       { name: "aircraftCategory", type: "string" },
       { name: "treasury", type: "address" },
       { name: "maxBudgetUSDC", type: "uint256" },
+      { name: "swapVmBytecode", type: "bytes" },
     ],
     outputs: [{ name: "flightId", type: "bytes32" }],
     stateMutability: "nonpayable",
@@ -48,7 +49,14 @@ const SKYROUTE_VAULT_ABI = [
       { name: "usdcAmount", type: "uint256" },
     ],
     outputs: [],
-    stateMutability: "nonpayable",
+    stateMutability: "payable",
+  },
+  {
+    type: "function",
+    name: "totalCarbonOffsetKg",
+    inputs: [{ name: "treasury", type: "address" }],
+    outputs: [{ name: "offsetKg", type: "uint256" }],
+    stateMutability: "view",
   },
   {
     type: "function",
@@ -95,7 +103,7 @@ export async function POST(request: NextRequest) {
     const vaultAddress: Address =
       (process.env.NEXT_PUBLIC_ARC_VAULT_ADDRESS as Address) ||
       (process.env.NEXT_PUBLIC_SKYROUTE_VAULT_ADDRESS as Address) ||
-      "0x655CF529bF4838C30227E4838A95B9D6A39C7f8C";
+      "0xb579e26C81FDf858a9A6a0F3CcAB497a70343c5d";
 
     const body = await request.json();
     const {
@@ -106,6 +114,7 @@ export async function POST(request: NextRequest) {
       co2Kg = 1896,
       usdcAmount = 5000000n, // micro-USDC (6 decimals)
       treasuryAddress,
+      swapVmBytecode = "0x010203",
     } = body;
 
     const account = privateKeyToAccount(privateKey);
@@ -154,7 +163,13 @@ export async function POST(request: NextRequest) {
       address: vaultAddress,
       abi: SKYROUTE_VAULT_ABI,
       functionName: "registerFlightManifest",
-      args: [callsign, aircraftCategory, treasury, budgetCap],
+      args: [
+        callsign,
+        aircraftCategory,
+        treasury,
+        budgetCap,
+        (swapVmBytecode as Hex) || "0x010203",
+      ],
     });
 
     const registerReceipt = await publicClient.waitForTransactionReceipt({
@@ -176,7 +191,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Execute real settleWheelsDown transaction on Arc Testnet
+    // 1:1,000 Testnet Demo Scaling:
+    // Full valuation is finalUsdcAmount (in 6-decimal micro-USDC).
+    // On Arc Testnet, the native currency is USDC (18-decimal wei).
+    // Converting (finalUsdcAmount / 1000) into 18-decimal wei: (finalUsdcAmount * 10^12) / 1000 = finalUsdcAmount * 10^9.
+    const scaledNativeValue =
+      finalUsdcAmount > 0n
+        ? finalUsdcAmount * 1_000_000_000n
+        : 10_000_000_000_000_000n; // Default to 0.01 native USDC if 0
+
+    // Execute real settleWheelsDown transaction on Arc Testnet with scaled native USDC payment
     const settleTxHash = await walletClient.writeContract({
       address: vaultAddress,
       abi: SKYROUTE_VAULT_ABI,
@@ -188,12 +212,33 @@ export async function POST(request: NextRequest) {
         BigInt(Math.floor(co2Kg)),
         finalUsdcAmount,
       ],
+      value: scaledNativeValue,
     });
 
     const settleReceipt = await publicClient.waitForTransactionReceipt({
       hash: settleTxHash,
       confirmations: 1,
     });
+
+    // Query verified on-chain total carbon credits for the treasury
+    let totalCarbonOffsetKg = "0";
+    try {
+      const credits = await publicClient.readContract({
+        address: vaultAddress,
+        abi: SKYROUTE_VAULT_ABI,
+        functionName: "totalCarbonOffsetKg",
+        args: [treasury],
+      });
+      totalCarbonOffsetKg = (credits as bigint).toString();
+    } catch (err) {
+      throw new Error(
+        "Failed to read verified on-chain carbon credits: " +
+          (err instanceof Error ? err.message : String(err))
+      );
+    }
+
+    const scaledCostUSDC = (Number(scaledNativeValue) / 1e18).toFixed(4);
+    const fullCostUSDC = (Number(finalUsdcAmount) / 1e6).toFixed(2);
 
     return NextResponse.json({
       success: true,
@@ -206,6 +251,10 @@ export async function POST(request: NextRequest) {
       explorerUrl: `https://testnet.arcscan.app/tx/${settleTxHash}`,
       agentAddress: account.address,
       treasuryAddress: treasury,
+      scaledCostUSDC,
+      fullCostUSDC,
+      totalCarbonOffsetKg,
+      scalingRatio: "1:1,000",
     });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Settlement execution failed";

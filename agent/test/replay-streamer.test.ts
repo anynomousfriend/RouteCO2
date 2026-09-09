@@ -1,19 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "fs";
-import { resolve } from "path";
 import {
   ReplayStreamer,
+  generateDescentTrajectory,
   type ReplayFrame,
   type WheelsDownEventPayload,
 } from "../src/replay-streamer.js";
 
-describe("Recorded Real Flight Replay Dataset & Streamer (Dual-Mode Engine)", () => {
-  const jsonPath = resolve(__dirname, "../src/data/replay-flight.json");
-  let flightData: ReplayFrame[];
-
-  it("loads the verified flight replay dataset with valid structure and schema", () => {
-    const raw = readFileSync(jsonPath, "utf-8");
-    flightData = JSON.parse(raw) as ReplayFrame[];
+describe("Dynamic Aeronautical Flight Trajectory Generator & Streamer (Zero-Mock Engine)", () => {
+  it("generates realistic flight trajectory dataset with valid structure and schema", () => {
+    const flightData = generateDescentTrajectory("FRA", "FRA", "NARROW_BODY");
 
     expect(Array.isArray(flightData)).toBe(true);
     expect(flightData.length).toBeGreaterThanOrEqual(15);
@@ -32,8 +27,7 @@ describe("Recorded Real Flight Replay Dataset & Streamer (Dual-Mode Engine)", ()
   });
 
   it("verifies flight descent profile, touchdown frame, and rollout telemetry", () => {
-    const raw = readFileSync(jsonPath, "utf-8");
-    const frames = JSON.parse(raw) as ReplayFrame[];
+    const frames = generateDescentTrajectory("FRA", "FRA", "NARROW_BODY");
 
     // Airborne descent sequence
     const airborneFrames = frames.filter((f) => !f.onGround);
@@ -47,7 +41,9 @@ describe("Recorded Real Flight Replay Dataset & Streamer (Dual-Mode Engine)", ()
     );
 
     // Touchdown frame
-    const touchdownIndex = frames.findIndex((f, idx) => idx > 0 && !frames[idx - 1].onGround && f.onGround);
+    const touchdownIndex = frames.findIndex(
+      (f, idx) => idx > 0 && !frames[idx - 1].onGround && f.onGround
+    );
     expect(touchdownIndex).toBeGreaterThan(0);
 
     const touchdownFrame = frames[touchdownIndex];
@@ -67,8 +63,7 @@ describe("Recorded Real Flight Replay Dataset & Streamer (Dual-Mode Engine)", ()
   });
 
   it("streams telemetry step-by-step and emits tick events with accurate progress", () => {
-    const raw = readFileSync(jsonPath, "utf-8");
-    const frames = JSON.parse(raw) as ReplayFrame[];
+    const frames = generateDescentTrajectory();
     const streamer = new ReplayStreamer(frames);
 
     expect(streamer.getCurrentIndex()).toBe(0);
@@ -87,8 +82,7 @@ describe("Recorded Real Flight Replay Dataset & Streamer (Dual-Mode Engine)", ()
   });
 
   it("fires wheels-down event at exact touchdown frame and calculates ICAO emissions", () => {
-    const raw = readFileSync(jsonPath, "utf-8");
-    const frames = JSON.parse(raw) as ReplayFrame[];
+    const frames = generateDescentTrajectory("FRA", "FRA", "NARROW_BODY");
     const streamer = new ReplayStreamer(frames, "NARROW_BODY");
 
     const wheelsDownEvents: WheelsDownEventPayload[] = [];
@@ -110,7 +104,9 @@ describe("Recorded Real Flight Replay Dataset & Streamer (Dual-Mode Engine)", ()
     expect(event.frame.onGround).toBe(true);
     expect(event.frame.baroAltitudeMeters).toBe(8);
     expect(event.frame.velocityMps).toBe(68);
-    expect(event.touchdownIndex).toBe(frames.findIndex((f, idx) => idx > 0 && !frames[idx - 1].onGround && f.onGround));
+    expect(event.touchdownIndex).toBe(
+      frames.findIndex((f, idx) => idx > 0 && !frames[idx - 1].onGround && f.onGround)
+    );
 
     // Valid ICAO emissions result
     const emissions = event.emissions;
@@ -124,8 +120,7 @@ describe("Recorded Real Flight Replay Dataset & Streamer (Dual-Mode Engine)", ()
   });
 
   it("does not fire duplicate wheels-down events during subsequent rollout frames", () => {
-    const raw = readFileSync(jsonPath, "utf-8");
-    const frames = JSON.parse(raw) as ReplayFrame[];
+    const frames = generateDescentTrajectory();
     const streamer = new ReplayStreamer(frames);
 
     let wheelsDownCount = 0;
@@ -133,7 +128,9 @@ describe("Recorded Real Flight Replay Dataset & Streamer (Dual-Mode Engine)", ()
       wheelsDownCount++;
     });
 
-    const touchdownIndex = frames.findIndex((f, idx) => idx > 0 && !frames[idx - 1].onGround && f.onGround);
+    const touchdownIndex = frames.findIndex(
+      (f, idx) => idx > 0 && !frames[idx - 1].onGround && f.onGround
+    );
 
     // Step until touchdown
     for (let i = 0; i <= touchdownIndex; i++) {
@@ -155,8 +152,7 @@ describe("Recorded Real Flight Replay Dataset & Streamer (Dual-Mode Engine)", ()
   });
 
   it("resets streamer state and allows re-streaming replay flight", () => {
-    const raw = readFileSync(jsonPath, "utf-8");
-    const frames = JSON.parse(raw) as ReplayFrame[];
+    const frames = generateDescentTrajectory();
     const streamer = new ReplayStreamer(frames);
 
     // Fast-forward to end
@@ -175,7 +171,9 @@ describe("Recorded Real Flight Replay Dataset & Streamer (Dual-Mode Engine)", ()
     });
 
     // Step to touchdown again
-    const touchdownIndex = frames.findIndex((f, idx) => idx > 0 && !frames[idx - 1].onGround && f.onGround);
+    const touchdownIndex = frames.findIndex(
+      (f, idx) => idx > 0 && !frames[idx - 1].onGround && f.onGround
+    );
     for (let i = 0; i <= touchdownIndex; i++) {
       streamer.stepNext();
     }
@@ -185,11 +183,11 @@ describe("Recorded Real Flight Replay Dataset & Streamer (Dual-Mode Engine)", ()
   });
 
   it("supports different aircraft categories and scales wheels-down emissions accordingly", () => {
-    const raw = readFileSync(jsonPath, "utf-8");
-    const frames = JSON.parse(raw) as ReplayFrame[];
+    const narrowFrames = generateDescentTrajectory("FRA", "FRA", "NARROW_BODY");
+    const wideFrames = generateDescentTrajectory("FRA", "FRA", "WIDE_BODY");
 
-    const narrowStreamer = new ReplayStreamer(frames, "NARROW_BODY");
-    const wideStreamer = new ReplayStreamer(frames, "WIDE_BODY");
+    const narrowStreamer = new ReplayStreamer(narrowFrames, "NARROW_BODY");
+    const wideStreamer = new ReplayStreamer(wideFrames, "WIDE_BODY");
 
     let narrowPayload: WheelsDownEventPayload | null = null;
     narrowStreamer.on("wheels-down", (p) => {
@@ -206,8 +204,24 @@ describe("Recorded Real Flight Replay Dataset & Streamer (Dual-Mode Engine)", ()
 
     expect(narrowPayload).not.toBeNull();
     expect(widePayload).not.toBeNull();
-    expect(widePayload!.emissions.hourlyBurnKg).toBeGreaterThan(narrowPayload!.emissions.hourlyBurnKg);
-    expect(widePayload!.emissions.fuelBurnKg).toBeGreaterThan(narrowPayload!.emissions.fuelBurnKg);
-    expect(widePayload!.emissions.usdcAmountMicro).toBeGreaterThan(narrowPayload!.emissions.usdcAmountMicro);
+    expect(widePayload!.emissions.hourlyBurnKg).toBeGreaterThan(
+      narrowPayload!.emissions.hourlyBurnKg
+    );
+    expect(widePayload!.emissions.fuelBurnKg).toBeGreaterThan(
+      narrowPayload!.emissions.fuelBurnKg
+    );
+    expect(widePayload!.emissions.usdcAmountMicro).toBeGreaterThan(
+      narrowPayload!.emissions.usdcAmountMicro
+    );
+  });
+
+  it("generates trajectories for different destinations (e.g. JFK)", () => {
+    const jfkFrames = generateDescentTrajectory("FRA", "JFK", "WIDE_BODY", {
+      callsign: "BAW117",
+    });
+    expect(jfkFrames.length).toBeGreaterThanOrEqual(15);
+    expect(jfkFrames[0].callsign).toBe("BAW117");
+    // JFK latitude is ~40.64
+    expect(jfkFrames[jfkFrames.length - 1].latitude).toBeCloseTo(40.64, 1);
   });
 });

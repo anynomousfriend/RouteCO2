@@ -9,6 +9,7 @@ interface ISkyRouteVault {
         string aircraftCategory;
         address treasury;
         uint256 maxBudgetUSDC;
+        bytes swapVmBytecode;
         bool settled;
     }
 
@@ -29,9 +30,12 @@ interface ISkyRouteVault {
 
     event AuthorizedAgentUpdated(address indexed agent, bool authorized);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event FeesWithdrawn(address indexed to, uint256 amount);
+    event AquaSwapExecuted(address indexed tokenIn, uint256 amountIn, address indexed tokenOut, uint256 amountOut);
 
     function aqua() external view returns (address);
     function usdc() external view returns (address);
+    function swapVmRuleEngine() external view returns (address);
     function owner() external view returns (address);
     function authorizedAgents(address agent) external view returns (bool);
     function manifests(bytes32 flightId) external view returns (
@@ -39,6 +43,7 @@ interface ISkyRouteVault {
         string memory aircraftCategory,
         address treasury,
         uint256 maxBudgetUSDC,
+        bytes memory swapVmBytecode,
         bool settled
     );
 
@@ -48,8 +53,18 @@ interface ISkyRouteVault {
         string calldata callsign,
         string calldata aircraftCategory,
         address treasury,
+        uint256 maxBudgetUSDC,
+        bytes calldata swapVmBytecode
+    ) external returns (bytes32 flightId);
+
+    function registerFlightManifest(
+        string calldata callsign,
+        string calldata aircraftCategory,
+        address treasury,
         uint256 maxBudgetUSDC
     ) external returns (bytes32 flightId);
+
+    function totalCarbonOffsetKg(address treasury) external view returns (uint256);
 
     function settleWheelsDown(
         bytes32 flightId,
@@ -57,5 +72,15 @@ interface ISkyRouteVault {
         uint256 fuelBurnKg,
         uint256 co2Kg,
         uint256 usdcAmount
+    ) external payable;
+
+    function withdrawFees(address payable to, uint256 amount) external;
+
+    function aquaAppSwapCallback(
+        address tokenIn,
+        uint256 amountIn,
+        address tokenOut,
+        uint256 amountOut,
+        bytes calldata data
     ) external;
 }

@@ -1,18 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getOpenSkyBearerToken } from "@/lib/opensky-auth";
 
-export interface LiveFlightSummary {
-  icao24: string;
-  callsign: string;
-  originCountry: string;
-  equipmentType?: string;
-  longitude: number;
-  latitude: number;
-  baroAltitudeMeters: number;
-  velocityMps: number;
-  trueTrackDeg: number;
-  verticalRateMps: number;
-  onGround: boolean;
-}
+import { type LiveFlightSummary } from "@/lib/replay-scenarios";
+export type { LiveFlightSummary };
 
 // In-memory cache to maintain high-frequency UI updates without hammering APIs
 let cachedFlights: LiveFlightSummary[] = [];
@@ -21,7 +11,7 @@ let lastSource = "ADS-B Radar";
 const CACHE_TTL_MS = 10000; // 10 seconds cache
 
 /**
- * Fetches live ADS-B telemetry from OpenSky Network (with Basic Auth if provided)
+ * Fetches live ADS-B telemetry from OpenSky Network (with OAuth2 Bearer Auth or Basic Auth)
  */
 async function fetchFromOpenSky(searchParams: URLSearchParams): Promise<LiveFlightSummary[] | null> {
   const isGlobal = searchParams.get("all") === "true";
@@ -39,7 +29,10 @@ async function fetchFromOpenSky(searchParams: URLSearchParams): Promise<LiveFlig
     "User-Agent": "RouteCO2-Console/1.0 (ETHOnline2026; FlightOperations)",
   };
 
-  if (process.env.OPENSKY_USERNAME && process.env.OPENSKY_PASSWORD) {
+  const bearerToken = await getOpenSkyBearerToken();
+  if (bearerToken) {
+    headers["Authorization"] = `Bearer ${bearerToken}`;
+  } else if (process.env.OPENSKY_USERNAME && process.env.OPENSKY_PASSWORD) {
     const basic = Buffer.from(
       `${process.env.OPENSKY_USERNAME}:${process.env.OPENSKY_PASSWORD}`
     ).toString("base64");
@@ -47,7 +40,7 @@ async function fetchFromOpenSky(searchParams: URLSearchParams): Promise<LiveFlig
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 6000);
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
 
   try {
     const response = await fetch(queryUrl, {
@@ -57,6 +50,7 @@ async function fetchFromOpenSky(searchParams: URLSearchParams): Promise<LiveFlig
     clearTimeout(timeoutId);
 
     if (!response.ok) {
+      console.warn(`[OpenSky API] Query returned status ${response.status}`);
       return null;
     }
 
@@ -104,11 +98,11 @@ async function fetchFromOpenSky(searchParams: URLSearchParams): Promise<LiveFlig
  * Provides real transponder ADS-B signals with zero rate-limit throttling
  */
 async function fetchFromLiveADSB(searchParams: URLSearchParams): Promise<LiveFlightSummary[]> {
-  const lat = searchParams.get("lat") || "50.1109";
-  const lon = searchParams.get("lon") || "8.6821";
+  const lat = Math.round(parseFloat(searchParams.get("lat") || "50.1109") * 4) / 4;
+  const lon = Math.round(parseFloat(searchParams.get("lon") || "8.6821") * 4) / 4;
   const radius = searchParams.get("radius") || "250";
 
-  const url = `https://api.adsb.lol/v2/point/${lat}/${lon}/${radius}`;
+  const url = `https://api.adsb.lol/v2/lat/${lat}/lon/${lon}/dist/${radius}`;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 7000);
 
@@ -183,17 +177,17 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
 
-  // 1. Try OpenSky Network first
+  // 1. Try OpenSky Network with OAuth2 Bearer Auth
   let flights = await fetchFromOpenSky(searchParams);
-  let source = "OpenSky Network ADS-B";
+  let source = "OpenSky Network ADS-B (OAuth2 Authenticated)";
 
-  // 2. If OpenSky is throttled (429) or empty, fall over to 24/7 live ADS-B receiver feed
+  // 2. If OpenSky is throttled or empty, fall over to 24/7 live ADS-B receiver feed
   if (!flights || flights.length === 0) {
     try {
       flights = await fetchFromLiveADSB(searchParams);
       source = "Global ADS-B Transponder Network";
     } catch {
-      // Fall through to cache
+      // Fall through to cache or error
     }
   }
 
@@ -223,7 +217,7 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json(
-    { error: "No live ADS-B transponder telemetry acquired" },
+    { error: "No live ADS-B transponder telemetry acquired from live radar networks" },
     { status: 503 }
   );
 }

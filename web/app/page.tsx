@@ -5,69 +5,113 @@ import dynamic from "next/dynamic";
 import { useWalletAuth } from "../lib/use-wallet-auth";
 import { toast } from "sonner";
 import {
-  Plane,
-  Radio,
-  Globe,
-  Wallet,
-  ExternalLink,
-  ShieldCheck,
-  Play,
-  Pause,
-  SkipForward,
-  RotateCcw,
-  FastForward,
-  Loader2,
-} from "lucide-react";
-import type { LiveFlightSummary } from "./api/live-flights/route";
-import { REPLAY_SCENARIOS, type ReplayScenario } from "../lib/replay-scenarios";
-import { AquaFlowVisualizer } from "../components/AquaFlowVisualizer";
+  REPLAY_SCENARIOS,
+  type ReplayScenario,
+  type AircraftCategory,
+  type LiveFlightSummary,
+} from "../lib/replay-scenarios";
+import { NavigationDock } from "../components/NavigationDock";
+import { FlightMasterCard } from "../components/FlightMasterCard";
+import { DescentTimelineBar } from "../components/DescentTimelineBar";
+import { CommandSearchModal } from "../components/CommandSearchModal";
 import {
   SettlementCertificateModal,
   type SettlementCertificateData,
 } from "../components/SettlementCertificateModal";
-import { RouteCo2Logo } from "../components/RouteCo2Logo";
+import { AquaInspectorModal } from "../components/AquaInspectorModal";
+import {
+  SessionDelegationModal,
+  type SessionDelegationData,
+} from "../components/SessionDelegationModal";
+import { FuelDynamicsBento } from "../components/FuelDynamicsBento";
+import { SettlementIntegrityBento } from "../components/SettlementIntegrityBento";
+import LandedSettlementQueue, {
+  INITIAL_LANDED_FLIGHTS,
+  type LandedFlightRecord,
+} from "../components/LandedSettlementQueue";
+import {
+  AIRFRAME_PROFILES,
+  DEFAULT_AIRFRAME,
+  calculateLandedFlightSettlement,
+} from "../lib/icao-precision";
+import { Activity, ChevronDown, ChevronUp, Globe2, Map } from "lucide-react";
 import { formatEther } from "viem";
 import {
   publicArcClient,
   SKYROUTE_VAULT_ADDRESS,
   SKYROUTE_VAULT_ABI,
 } from "../lib/arc-client";
+import WindyFlightMap from "../components/WindyFlightMap";
 
-const DEPLOYED_VAULT_ADDRESS = SKYROUTE_VAULT_ADDRESS;
-const DEPLOYED_AQUA_ADDRESS = "0x6268472c27a6a25ab85713b51f1485c991f0cf9f";
-
-// Dynamic import for Leaflet map to prevent SSR window reference error
-const WindyFlightMap = dynamic(() => import("../components/WindyFlightMap"), {
+const CesiumGlobeViewer = dynamic(() => import("../components/CesiumGlobeViewer"), {
   ssr: false,
   loading: () => (
-    <div className="w-full h-full min-h-[220px] bg-[#0B0F19] flex items-center justify-center text-xs font-mono text-slate-400">
-      <span className="w-2 h-2 rounded-full bg-[#F5FF7A] animate-ping mr-2" />
-      Acquiring ADS-B Radar...
+    <div className="w-full h-full min-h-[640px] flex items-center justify-center bg-[#0B0F19] text-emerald-400 font-mono text-xs rounded-3xl border border-white/5">
+      <div className="flex flex-col items-center gap-3">
+        <Globe2 className="w-8 h-8 animate-spin text-emerald-400/60" />
+        <span className="tracking-widest uppercase">Initializing 3D Digital Globe Engine...</span>
+      </div>
     </div>
   ),
 });
 
-interface OnChainSettlementItem {
-  flightId: string;
-  callsign: string;
-  airborneSeconds: number;
-  co2Kg: number;
-  usdcAmount: number;
-  blockNumber: number;
-  txHash: string;
-}
+const DEPLOYED_VAULT_ADDRESS = SKYROUTE_VAULT_ADDRESS;
 
 export default function FlightOperationsConsole() {
   const { ready, authenticated, user, login, logout } = useWalletAuth();
 
   // Mode: "live" (OpenSky Network) vs "replay" (Lufthansa DLH400 Touchdown Demo)
   const [mode, setMode] = useState<"live" | "replay">("live");
+  const [activeNavTab, setActiveNavTab] = useState("radar");
+  const [isCommandOpen, setIsCommandOpen] = useState(false);
+
+  // Switch Modes and reset transient settlement states cleanly
+  const switchMode = (newMode: "live" | "replay") => {
+    setMode(newMode);
+    setActiveNavTab(newMode === "live" ? "radar" : "schedule");
+    setIsSettled(false);
+    setSettlementTxHash(undefined);
+    setCertificateData(null);
+  };
+
+  // 3D Globe vs 2D Radar Engine (Default: "3d")
+  const [mapEngine, setMapEngine] = useState<"3d" | "2d">("3d");
+  const [armedFlightCallsign, setArmedFlightCallsign] = useState<string | null>(null);
+  const [landedFlights, setLandedFlights] = useState<LandedFlightRecord[]>(INITIAL_LANDED_FLIGHTS);
+  const landedPendingCount = landedFlights.filter((f) => f.status === "PENDING").length;
+
+  const handleToggleArmSettlement = (callsign: string) => {
+    if (armedFlightCallsign === callsign.toLowerCase()) {
+      setArmedFlightCallsign(null);
+      toast.info("Settlement Trigger Disarmed", {
+        description: `Automated touchdown settlement disabled for ${callsign.toUpperCase()}.`,
+      });
+    } else {
+      setArmedFlightCallsign(callsign.toLowerCase());
+      toast.success("Settlement Trigger Armed!", {
+        description: `Watcher active: When ${callsign.toUpperCase()} touches down, on-chain retirement will execute automatically on Arc Testnet.`,
+      });
+    }
+  };
+
+  const handleArmedTouchdown = (meta: any) => {
+    if (
+      armedFlightCallsign &&
+      meta.callsign &&
+      meta.callsign.toLowerCase() === armedFlightCallsign.toLowerCase()
+    ) {
+      toast.info(`Touchdown Confirmed: ${meta.callsign}`, {
+        description: `Autonomous agent triggering verified carbon offset settlement on Arc Testnet...`,
+      });
+      triggerWheelsDownSettlement(meta);
+      setArmedFlightCallsign(null);
+    }
+  };
 
   // Live Flights State
   const [liveFlights, setLiveFlights] = useState<LiveFlightSummary[]>([]);
   const [selectedFlight, setSelectedFlight] = useState<LiveFlightSummary | null>(null);
   const [isLiveLoading, setIsLiveLoading] = useState(false);
-  const [liveSource, setLiveSource] = useState<string>("Global ADS-B Transponder Network");
 
   // Multi-Flight Replay Scenarios (Category 4)
   const [selectedScenarioIndex, setSelectedScenarioIndex] = useState(0);
@@ -78,18 +122,30 @@ export default function FlightOperationsConsole() {
   // Replay Playback State
   const [replayIndex, setReplayIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [replaySpeed, setReplaySpeed] = useState(1);
   const [isSettled, setIsSettled] = useState(false);
   const [isSettling, setIsSettling] = useState(false);
   const [settlementTxHash, setSettlementTxHash] = useState<string | undefined>(undefined);
 
-  // Executive Certificate Modal State (Category 5)
+  // Executive Certificate Modal State
   const [isCertificateOpen, setIsCertificateOpen] = useState(false);
   const [certificateData, setCertificateData] = useState<SettlementCertificateData | null>(null);
 
-  // On-Chain Event Logs
-  const [onChainEvents, setOnChainEvents] = useState<OnChainSettlementItem[]>([]);
-  const [rpcLatencyMs, setRpcLatencyMs] = useState<number | null>(null);
+  // 1inch Aqua Shared TVU Inspector Modal State
+  const [isAquaOpen, setIsAquaOpen] = useState(false);
+
+  // Track 3: Privy Scoped Session Delegation Key State
+  const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
+  const [sessionData, setSessionData] = useState<SessionDelegationData>({
+    status: "Active / Delegated",
+    budgetCapUSDC: 500,
+    expiryHours: 8,
+    expiresAt: Date.now() + 8 * 3600 * 1000,
+    targetVaultAddress: DEPLOYED_VAULT_ADDRESS,
+  });
+
+  // Avionics & Telemetry Integrity Drawer State
+  const [isIntegrityOpen, setIsIntegrityOpen] = useState(false);
+  const [activeIntegrityTab, setActiveIntegrityTab] = useState<"fuel" | "integrity">("fuel");
 
   const activeReplayFrame = useMemo(
     () => activeReplayFrames[replayIndex] || activeReplayFrames[0],
@@ -101,159 +157,197 @@ export default function FlightOperationsConsole() {
     user?.wallet?.address || "0x1698fdA3A9A8Ca9530434e545986176579F01650";
   const [treasuryBalance, setTreasuryBalance] = useState<string | null>(null);
   const [isBalanceLoading, setIsBalanceLoading] = useState(true);
+  const [totalCarbonCredits, setTotalCarbonCredits] = useState<string | null>(null);
+  const [isCreditsLoading, setIsCreditsLoading] = useState(true);
 
-  // Fetch On-Chain Treasury Balance
+  // Fetch On-Chain Treasury Balance & Carbon Credits Directly From SkyRouteVault
+  const fetchBalance = async () => {
+    try {
+      const bal = await publicArcClient.getBalance({
+        address: activeWalletAddress as `0x${string}`,
+      });
+      const formatted = parseFloat(formatEther(bal)).toFixed(2);
+      setTreasuryBalance(formatted);
+    } catch (err) {
+      console.error("Failed to query live Arc balance", err);
+    } finally {
+      setIsBalanceLoading(false);
+    }
+  };
+
+  const fetchCarbonCredits = async () => {
+    try {
+      const credits = await publicArcClient.readContract({
+        address: DEPLOYED_VAULT_ADDRESS,
+        abi: SKYROUTE_VAULT_ABI,
+        functionName: "totalCarbonOffsetKg",
+        args: [activeWalletAddress as `0x${string}`],
+      });
+      setTotalCarbonCredits((credits as bigint).toString());
+    } catch (err) {
+      console.error("Failed to query live Arc carbon credits", err);
+    } finally {
+      setIsCreditsLoading(false);
+    }
+  };
+
   useEffect(() => {
     let isMounted = true;
-    const fetchBalance = async () => {
-      try {
-        const bal = await publicArcClient.getBalance({
-          address: activeWalletAddress as `0x${string}`,
-        });
-        if (isMounted) {
-          const formatted = parseFloat(formatEther(bal)).toFixed(2);
-          setTreasuryBalance(formatted);
-        }
-      } catch (err) {
-        console.error("Failed to query live Arc balance", err);
-      } finally {
-        if (isMounted) setIsBalanceLoading(false);
-      }
+    const runQueries = async () => {
+      if (!isMounted) return;
+      await Promise.all([fetchBalance(), fetchCarbonCredits()]);
     };
 
-    fetchBalance();
-    const interval = setInterval(fetchBalance, 15000);
+    runQueries();
+    const interval = setInterval(runQueries, 15000);
     return () => {
       isMounted = false;
       clearInterval(interval);
     };
   }, [activeWalletAddress]);
 
-  // Fetch On-Chain Recent Settlements
-  const fetchRecentSettlements = async () => {
-    try {
-      const fromBlock = 61044000n;
-      const logs = await publicArcClient.getContractEvents({
-        address: DEPLOYED_VAULT_ADDRESS,
-        abi: SKYROUTE_VAULT_ABI,
-        eventName: "WheelsDownSettled",
-        fromBlock,
-      });
-
-      const parsed: OnChainSettlementItem[] = logs
-        .map((log) => {
-          const args = log.args as any;
-          return {
-            flightId: String(args.flightId || ""),
-            callsign: String(args.callsign || "FLIGHT"),
-            airborneSeconds: Number(args.airborneSeconds || 0),
-            co2Kg: Number(args.co2Kg || 0),
-            usdcAmount: Number(args.usdcAmount || 0) / 1_000_000,
-            blockNumber: Number(log.blockNumber || 0),
-            txHash: String(log.transactionHash || ""),
-          };
-        })
-        .reverse();
-
-      setOnChainEvents(parsed.slice(0, 5));
-    } catch (err) {
-      console.error("Failed to load on-chain settlement events:", err);
-    }
-  };
-
+  // Global Keyboard Shortcut: ⌘K / Ctrl+K
   useEffect(() => {
-    fetchRecentSettlements();
-    const interval = setInterval(fetchRecentSettlements, 15000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Measure Real RPC Ping Latency
-  useEffect(() => {
-    let isMounted = true;
-    const pingRpc = async () => {
-      const start = performance.now();
-      try {
-        await publicArcClient.getBlockNumber();
-        const latency = Math.round(performance.now() - start);
-        if (isMounted) setRpcLatencyMs(latency);
-      } catch {
-        if (isMounted) setRpcLatencyMs(null);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setIsCommandOpen((prev) => !prev);
       }
     };
-    pingRpc();
-    const interval = setInterval(pingRpc, 20000);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  // Poll Real-Time OpenSky Flights
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchLiveFlights = async () => {
+      try {
+        setIsLiveLoading(true);
+        const res = await fetch("/api/live-flights");
+        if (!res.ok) {
+          console.warn("Live ADS-B radar acquiring signals...");
+          return;
+        }
+        const data = await res.json();
+        if (isMounted && Array.isArray(data.flights) && data.flights.length > 0) {
+          setLiveFlights(data.flights);
+          setSelectedFlight((current) => current || data.flights[0]);
+        }
+      } catch (err) {
+        console.warn("Live ADS-B poll notice:", err);
+      } finally {
+        if (isMounted) setIsLiveLoading(false);
+      }
+    };
+
+    fetchLiveFlights();
+    const interval = setInterval(fetchLiveFlights, 12000);
     return () => {
       isMounted = false;
       clearInterval(interval);
     };
   }, []);
 
-  // Fetch Live Flights from OpenSky / Global ADS-B Network
-  const fetchLiveFlights = async () => {
-    setIsLiveLoading(true);
-    try {
-      const res = await fetch("/api/live-flights");
-      if (res.ok) {
-        const json = await res.json();
-        if (json.source) {
-          setLiveSource(json.source);
-        }
-        if (json.flights && json.flights.length > 0) {
-          setLiveFlights(json.flights);
-          if (!selectedFlight) {
-            setSelectedFlight(json.flights[0]);
-          }
-        }
-      }
-    } catch (err) {
-      console.error("Failed to load live flights", err);
-    } finally {
-      setIsLiveLoading(false);
+  // Telemetry Calculations
+  const activeData = mode === "replay" ? activeReplayFrame : selectedFlight;
+  const activeAltitude = activeData?.baroAltitudeMeters ?? 0;
+  const activeVelocity = activeData?.velocityMps ?? 0;
+
+  // Derive category and hourly burn for live flight vs replay scenario
+  const liveCategory: AircraftCategory = useMemo(() => {
+    if (mode === "replay") return activeScenario.category;
+    const equip = (selectedFlight?.equipmentType || "").toUpperCase();
+    if (equip.includes("A380") || equip.includes("B747") || equip.includes("A340") || equip.includes("B77W")) return "HEAVY";
+    if (equip.includes("A350") || equip.includes("B777") || equip.includes("B787") || equip.includes("A330") || equip.includes("A339")) return "WIDE_BODY";
+    if (equip.includes("E190") || equip.includes("E195") || equip.includes("CRJ") || equip.includes("AT7") || equip.includes("DH8")) return "REGIONAL";
+    return "NARROW_BODY";
+  }, [mode, activeScenario.category, selectedFlight?.equipmentType]);
+
+  const liveHourlyBurn = useMemo(() => {
+    switch (liveCategory) {
+      case "HEAVY": return 10200;
+      case "WIDE_BODY": return 6500;
+      case "REGIONAL": return 1600;
+      case "NARROW_BODY":
+      default: return 2400;
     }
-  };
+  }, [liveCategory]);
 
-  useEffect(() => {
-    fetchLiveFlights();
-    const interval = setInterval(fetchLiveFlights, 12000);
-    return () => clearInterval(interval);
-  }, []);
+  const hourlyBurn = mode === "replay" ? activeScenario.hourlyBurnKg : liveHourlyBurn;
 
-  // Active Telemetry (Zero-Mock: renders null if no live flight is acquired yet)
-  const activeData =
-    mode === "replay"
-      ? activeReplayFrame
-      : selectedFlight || (liveFlights.length > 0 ? liveFlights[0] : null);
-
-  // ICAO Doc 9889 Emission Calculations
-  const altitudeFeet = activeData ? Math.round(activeData.baroAltitudeMeters * 3.28084) : 0;
-  const speedKnots = activeData ? Math.round(activeData.velocityMps * 1.94384) : 0;
-  const hourlyBurnKg = mode === "replay" ? activeScenario.hourlyBurnKg : 2400;
-
-  // Flight Leg Duration & Emission Benchmarks
   const airborneSeconds =
     mode === "replay"
       ? activeScenario.plannedAirborneSeconds
-      : 5 * 60;
-  const fuelBurnKg = Math.round((airborneSeconds / 3600) * hourlyBurnKg);
-  const co2Kg = Math.round(fuelBurnKg * 3.16); // ICAO standard emission factor (3.16 kg CO2 per kg Jet-A)
+      : 3600;
+
+  const fuelBurnKg = Math.round((airborneSeconds / 3600) * hourlyBurn);
+  const co2Kg = Math.round(fuelBurnKg * 3.16);
   const pricePerTonne = mode === "replay" ? activeScenario.pricePerTonneUSDC : 25.0;
   const usdcCost = Math.max(0.35, +((co2Kg / 1000) * pricePerTonne).toFixed(2));
+  const currentFuelFlowRate = +(hourlyBurn / 3600).toFixed(2);
 
   const isLanded =
     mode === "replay"
       ? activeReplayFrame.onGround || isSettled
       : Boolean(activeData?.onGround);
 
-  // Trigger Real Wheels-Down Settlement on Arc Testnet via /api/settle
-  const triggerWheelsDownSettlement = async (frame: any) => {
+  // Trigger Real Settlement on Arc Testnet via /api/settle
+  const triggerWheelsDownSettlement = async (targetFrame?: any) => {
     if (isSettling) return;
+
+    // Track 3: Verify Privy Scoped Session Delegation Key Bounds
+    if (sessionData.status === "Revoked") {
+      toast.error("Settlement Blocked", {
+        description:
+          "Session delegation key has been revoked by dispatcher emergency abort. All automated settlements locked.",
+      });
+      return;
+    }
+
+    if (sessionData.status === "Pending Authorization") {
+      toast.error("Authorization Required", {
+        description:
+          "Flight operations session key requires authorization before autonomous flight dispatch.",
+      });
+      setIsSessionModalOpen(true);
+      return;
+    }
+
+    if (Date.now() > sessionData.expiresAt) {
+      toast.error("Session Key Expired", {
+        description:
+          "Delegated flight session key has expired. Please authorize a new session window.",
+      });
+      setSessionData((prev) => ({ ...prev, status: "Pending Authorization" }));
+      setIsSessionModalOpen(true);
+      return;
+    }
+
+    if (usdcCost > sessionData.budgetCapUSDC) {
+      toast.error("Budget Cap Exceeded", {
+        description: `Flight settlement cost ($${usdcCost.toFixed(
+          2
+        )} USDC) exceeds delegated session budget cap ($${sessionData.budgetCapUSDC.toFixed(
+          2
+        )} USDC).`,
+      });
+      return;
+    }
+
     setIsSettling(true);
 
-    const callsign = mode === "replay" ? activeScenario.callsign : frame.callsign || "DLH400";
-    const category = mode === "replay" ? activeScenario.category : "NARROW_BODY";
+    const isLive = mode === "live";
+    const callsign = isLive
+      ? (selectedFlight?.callsign || targetFrame?.callsign || "RADAR-1090")
+      : activeScenario.callsign;
+    const category = isLive ? liveCategory : activeScenario.category;
 
     const toastId = toast.loading(
-      `Broadcasting Wheels-Down Settlement for ${callsign} to Arc Testnet...`
+      isLive
+        ? `Broadcasting Flight Leg Settlement for ${callsign} to Arc Testnet...`
+        : `Broadcasting Wheels-Down Settlement for ${callsign} to Arc Testnet...`
     );
 
     try {
@@ -268,6 +362,7 @@ export default function FlightOperationsConsole() {
           co2Kg,
           usdcAmount: BigInt(Math.round(usdcCost * 1_000_000)).toString(),
           treasuryAddress: activeWalletAddress,
+          swapVmBytecode: "0x01020304",
         }),
       });
 
@@ -279,21 +374,83 @@ export default function FlightOperationsConsole() {
       setIsSettled(true);
       setSettlementTxHash(data.settleTxHash);
 
-      // Executive Audit Certificate Data (Category 5)
+      // Synchronize into Landed Flights Queue
+      setLandedFlights((prev) => {
+        const existingIdx = prev.findIndex(
+          (f) => f.callsign.toUpperCase() === callsign.toUpperCase()
+        );
+        if (existingIdx >= 0) {
+          const updated = [...prev];
+          updated[existingIdx] = {
+            ...updated[existingIdx],
+            status: "SETTLED",
+            txHash: data.settleTxHash,
+            settledAt: "Just now",
+            explorerUrl: data.explorerUrl,
+          };
+          return updated;
+        } else {
+          const flightIcao = selectedFlight?.icao24 || targetFrame?.icao24 || "3c6674";
+          const flightAirframe =
+            (category === "HEAVY" || String(category) === "4"
+              ? AIRFRAME_PROFILES.B77W
+              : category === "REGIONAL" || String(category) === "2"
+              ? AIRFRAME_PROFILES.E190
+              : AIRFRAME_PROFILES.A320) || DEFAULT_AIRFRAME;
+
+          const estimate = calculateLandedFlightSettlement({
+            callsign: callsign.toUpperCase(),
+            icao24: flightIcao,
+            airframe: flightAirframe,
+            airborneSeconds,
+          });
+
+          return [
+            {
+              id: `${callsign.toLowerCase()}-${Date.now()}`,
+              callsign: callsign.toUpperCase(),
+              icao24: flightIcao,
+              operator: isLive ? (selectedFlight?.originCountry ? `${selectedFlight.originCountry} Air Transport` : "Commercial Aviation") : activeScenario.airline,
+              origin: isLive ? "Origin Waypoint" : activeScenario.originAirport,
+              destination: isLive ? "Destination Airport" : activeScenario.destinationAirport,
+              airframe: flightAirframe,
+              landedAt: "Just now",
+              airborneSeconds,
+              distanceKm: Math.round((airborneSeconds / 3600) * 850),
+              estimate,
+              status: "SETTLED",
+              txHash: data.settleTxHash,
+              settledAt: "Just now",
+              explorerUrl: data.explorerUrl,
+            },
+            ...prev,
+          ];
+        }
+      });
+
+      // Executive Audit Certificate Data
       const cert: SettlementCertificateData = {
         flightId: data.flightId || `${callsign}-${Date.now()}`,
         callsign,
-        airline: mode === "replay" ? activeScenario.airline : "Commercial Carrier",
-        airframe: mode === "replay" ? activeScenario.airframe : "Airbus A320 / Boeing 737",
-        originAirport: mode === "replay" ? activeScenario.originAirport : "DEP",
-        destinationAirport: mode === "replay" ? activeScenario.destinationAirport : "ARR",
-        destinationName: mode === "replay" ? activeScenario.destinationName : "Destination Airport",
-        runway: mode === "replay" ? activeScenario.runway : "01",
-        icao24: mode === "replay" ? activeScenario.icao24 : "0xLIVE",
+        airline: isLive
+          ? (selectedFlight?.originCountry ? `${selectedFlight.originCountry} Commercial Airspace` : "Commercial Airspace")
+          : activeScenario.airline,
+        airframe: isLive
+          ? (selectedFlight?.equipmentType || (liveCategory === "HEAVY" ? "Heavy Widebody Jet" : "Commercial Jet"))
+          : activeScenario.airframe,
+        originAirport: isLive
+          ? (selectedFlight?.originCountry ? selectedFlight.originCountry.slice(0, 3).toUpperCase() : "DEP")
+          : activeScenario.originAirport,
+        destinationAirport: isLive ? "RADAR" : activeScenario.destinationAirport,
+        destinationName: isLive ? "Live Airspace Track" : activeScenario.destinationName,
+        runway: isLive ? "ENROUTE" : activeScenario.runway,
+        icao24: isLive ? (selectedFlight?.icao24 || "39DE4E") : activeScenario.icao24,
         airborneSeconds,
         fuelBurnKg,
         co2Kg,
         costUSDC: usdcCost,
+        scaledCostUSDC: data.scaledCostUSDC,
+        totalCarbonOffsetKg: data.totalCarbonOffsetKg,
         blockNumber: data.blockNumber,
         txHash: data.settleTxHash,
         explorerUrl: data.explorerUrl,
@@ -304,17 +461,22 @@ export default function FlightOperationsConsole() {
       setCertificateData(cert);
       setIsCertificateOpen(true);
 
-      toast.success("Wheels-Down Settled on Arc Testnet! 🛬", {
-        id: toastId,
-        description: `${callsign} reconciled on-chain. Block #${data.blockNumber} (Gas: ${data.gasUsed}).`,
-        duration: 12000,
-        action: {
-          label: "View ArcScan",
-          onClick: () => window.open(data.explorerUrl, "_blank"),
-        },
-      });
+      toast.success(
+        isLive
+          ? "Flight Leg Settled on Arc Testnet! ✈️"
+          : "Wheels-Down Settled on Arc Testnet! 🛬",
+        {
+          id: toastId,
+          description: `${callsign} reconciled on-chain. Block #${data.blockNumber} (Gas: ${data.gasUsed}).`,
+          duration: 12000,
+          action: {
+            label: "View ArcScan",
+            onClick: () => window.open(data.explorerUrl, "_blank"),
+          },
+        }
+      );
 
-      await fetchRecentSettlements();
+      await Promise.all([fetchBalance(), fetchCarbonCredits()]);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Settlement broadcast failed";
       toast.error("Settlement Failed", {
@@ -326,57 +488,96 @@ export default function FlightOperationsConsole() {
     }
   };
 
-  // Replay Tick Loop
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
-
-  useEffect(() => {
-    if (mode === "replay" && isPlaying) {
-      timerRef.current = setInterval(() => {
-        setReplayIndex((prev) => {
-          if (prev >= activeReplayFrames.length - 1) {
-            setIsPlaying(false);
-            return prev;
-          }
-          const next = prev + 1;
-          const currentFrame = activeReplayFrames[next];
-          const prevFrame = activeReplayFrames[prev];
-
-          if (!prevFrame.onGround && currentFrame.onGround && !isSettled && !isSettling) {
-            triggerWheelsDownSettlement(currentFrame);
-          }
-
-          return next;
-        });
-      }, 1000 / replaySpeed);
+  const ensureCertificateData = () => {
+    if (!certificateData) {
+      const isLive = mode === "live";
+      const callsign = isLive
+        ? (selectedFlight?.callsign || "RADAR-1090")
+        : activeScenario.callsign;
+      setCertificateData({
+        flightId: `${callsign}-DOC9889`,
+        callsign,
+        airline: isLive
+          ? (selectedFlight?.originCountry ? `${selectedFlight.originCountry} Airspace` : "Commercial Airspace")
+          : activeScenario.airline,
+        airframe: isLive
+          ? (selectedFlight?.equipmentType || "Commercial Jet")
+          : activeScenario.airframe,
+        originAirport: isLive
+          ? (selectedFlight?.originCountry ? selectedFlight.originCountry.slice(0, 3).toUpperCase() : "DEP")
+          : activeScenario.originAirport,
+        destinationAirport: isLive ? "RADAR" : activeScenario.destinationAirport,
+        destinationName: isLive ? "Live Airspace Sector" : activeScenario.destinationName,
+        runway: isLive ? "ENROUTE" : activeScenario.runway,
+        icao24: isLive ? (selectedFlight?.icao24 || "39DE4E") : activeScenario.icao24,
+        airborneSeconds: isLive ? 3600 : activeScenario.plannedAirborneSeconds,
+        fuelBurnKg,
+        co2Kg,
+        costUSDC: usdcCost,
+        scaledCostUSDC: (usdcCost / 1000).toFixed(4),
+        totalCarbonOffsetKg: totalCarbonCredits || undefined,
+        blockNumber: undefined,
+        txHash: settlementTxHash,
+        explorerUrl: settlementTxHash
+          ? `https://testnet.arcscan.app/tx/${settlementTxHash}`
+          : undefined,
+        agentAddress: "0x1698fdA3A9A8Ca9530434e545986176579F01650",
+        vaultAddress: DEPLOYED_VAULT_ADDRESS,
+        timestamp: Date.now(),
+      });
     }
+  };
 
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [isPlaying, mode, replaySpeed, isSettled, isSettling, activeReplayFrames]);
+  // Replay Playback Timer
+  useEffect(() => {
+    if (mode !== "replay" || !isPlaying) return;
 
-  // Replay Controls
-  const handleTogglePlay = () => setIsPlaying((p) => !p);
-  const handleStepForward = () => {
+    const interval = setInterval(() => {
+      setReplayIndex((prev) => {
+        const next = prev + 1;
+        if (next >= activeReplayFrames.length) {
+          setIsPlaying(false);
+          return prev;
+        }
+
+        const currentFrame = activeReplayFrames[next];
+        const prevFrame = activeReplayFrames[prev];
+
+        if (
+          prevFrame &&
+          !prevFrame.onGround &&
+          currentFrame.onGround &&
+          !isSettled &&
+          !isSettling
+        ) {
+          triggerWheelsDownSettlement(currentFrame);
+        }
+
+        return next;
+      });
+    }, 1800);
+
+    return () => clearInterval(interval);
+  }, [mode, isPlaying, activeReplayFrames, isSettled, isSettling]);
+
+  const handleStepNext = () => {
     if (replayIndex < activeReplayFrames.length - 1) {
       const next = replayIndex + 1;
       setReplayIndex(next);
+      const currentFrame = activeReplayFrames[next];
+      const prevFrame = activeReplayFrames[replayIndex];
       if (
-        !activeReplayFrames[replayIndex].onGround &&
-        activeReplayFrames[next].onGround &&
+        prevFrame &&
+        !prevFrame.onGround &&
+        currentFrame.onGround &&
         !isSettled &&
         !isSettling
       ) {
-        triggerWheelsDownSettlement(activeReplayFrames[next]);
+        triggerWheelsDownSettlement(currentFrame);
       }
     }
   };
-  const handleReset = () => {
-    setReplayIndex(0);
-    setIsPlaying(false);
-    setIsSettled(false);
-    setSettlementTxHash(undefined);
-  };
+
   const handleJumpToTouchdown = () => {
     const tdIdx = activeScenario.touchdownIndex ?? (activeReplayFrames.length - 4);
     setReplayIndex(tdIdx);
@@ -387,732 +588,387 @@ export default function FlightOperationsConsole() {
   };
 
   return (
-    <div className="h-screen w-full bg-[#EBEBEB] text-black font-sans p-4 sm:p-6 flex flex-col gap-5 overflow-hidden select-none">
-      {/* ── HEADER ── */}
-      <header className="flex items-center gap-5 shrink-0">
-        <div className="flex items-center gap-3">
-          <RouteCo2Logo className="w-12 h-12 shadow-[0_2px_10px_rgba(0,0,0,0.06)] shrink-0 border border-black/5 rounded-2xl" />
-          <div className="hidden md:flex flex-col">
-            <span className="font-serif text-lg font-normal leading-none text-black">Route<strong className="font-sans font-extrabold">CO2</strong></span>
-            <span className="text-[10px] font-mono text-[#666666] mt-0.5">Flight Ops & Treasury</span>
-          </div>
-        </div>
+    <div className="h-screen w-full bg-[#EBEBEB] text-black font-sans flex overflow-hidden select-none">
+      {/* ── 1. ULTRA-SLIM NAVIGATION DOCK (56px) ── */}
+      <NavigationDock
+        activeTab={activeNavTab}
+        onSelectTab={(tab) => {
+          setActiveNavTab(tab);
+          if (tab === "radar") switchMode("live");
+          if (tab === "schedule") switchMode("replay");
+        }}
+        onOpenAudit={() => {
+          ensureCertificateData();
+          setIsCertificateOpen(true);
+        }}
+        onOpenAqua={() => setIsAquaOpen(true)}
+        onOpenSession={() => setIsSessionModalOpen(true)}
+        onConnectWallet={() => {
+          if (authenticated) logout();
+          else login();
+        }}
+        isWalletConnected={Boolean(authenticated && user?.wallet)}
+        walletAddress={user?.wallet?.address}
+        treasuryBalance={treasuryBalance}
+        sessionCapUSDC={sessionData.budgetCapUSDC}
+        sessionStatus={sessionData.status}
+        landedPendingCount={landedPendingCount}
+      />
 
-        {/* Dynamic Status Indicator Bars */}
-        <div className="flex-1 flex gap-2">
-          <div className="h-1 flex-1 bg-black/10 rounded-full relative overflow-hidden">
-            <div className={`h-full bg-black transition-all ${activeData ? "w-full" : "w-1/3 animate-pulse"}`} />
-          </div>
-          <div className="h-1 flex-1 bg-black/10 rounded-full relative overflow-hidden">
-            <div className={`h-full bg-black transition-all ${activeData ? "w-full" : "w-1/3 animate-pulse"}`} />
-          </div>
-          <div className="h-1 flex-1 bg-black/10 rounded-full relative overflow-hidden">
-            <div className={`h-full bg-black transition-all ${mode === "replay" || activeData ? "w-full" : "w-0"}`} />
-          </div>
-          <div className="h-1 flex-1 bg-black/10 rounded-full relative overflow-hidden">
-            <div className={`h-full transition-all ${isSettled || isLanded ? "w-full bg-black" : isPlaying ? "w-2/3 bg-black animate-pulse" : "w-1/4 bg-black"}`} />
-          </div>
-          <div className="h-1 flex-1 bg-black/10 rounded-full relative overflow-hidden">
-            <div className={`h-full anim-progress transition-all ${isSettled ? "w-full bg-[#7C4DFF]" : isSettling ? "w-3/4 bg-[#7C4DFF] animate-pulse" : "w-0"}`} />
-          </div>
-        </div>
+      {/* ── 2. FLIGHT MASTER & SCHEMATIC PANEL (400px) ── */}
+      <div className="p-3 pr-0 flex flex-col shrink-0 h-full z-10 w-full max-w-[410px]">
+        <FlightMasterCard
+          scenario={activeScenario}
+          liveCallsign={mode === "live" && selectedFlight ? selectedFlight.callsign : undefined}
+          liveOriginCountry={mode === "live" && selectedFlight ? selectedFlight.originCountry : undefined}
+          liveIcao24={mode === "live" && selectedFlight ? selectedFlight.icao24 : undefined}
+          liveEquipmentType={mode === "live" && selectedFlight ? selectedFlight.equipmentType : undefined}
+          mode={mode}
+          altitudeM={activeAltitude}
+          velocityMps={activeVelocity}
+          fuelBurnKg={fuelBurnKg}
+          co2Kg={co2Kg}
+          usdcCost={usdcCost}
+          scaledCostUSDC={(usdcCost / 1000).toFixed(4)}
+          treasuryBalance={treasuryBalance}
+          isBalanceLoading={isBalanceLoading}
+          totalCarbonCredits={totalCarbonCredits}
+          isCreditsLoading={isCreditsLoading}
+          onOpenCommandSearch={() => setIsCommandOpen(true)}
+          className="h-full"
+        />
+      </div>
 
-        {/* Arc L1, Privy Wallet & Audit Certificate */}
-        <div className="flex items-center gap-3 text-xs font-medium">
-          <div className="hidden sm:flex items-center gap-1.5 text-[11px] font-semibold text-[#666666] uppercase tracking-wider">
-            <span>Arc Testnet:</span>
-            <strong className="text-black font-bold">5042002 Connected</strong>
-          </div>
-
-          {/* Executive Audit Certificate Quick Access (Category 5) */}
-          <button
-            type="button"
-            onClick={() => {
-              if (!certificateData) {
-                setCertificateData({
-                  flightId: `${activeScenario.callsign}-DOC9889`,
-                  callsign: activeScenario.callsign,
-                  airline: activeScenario.airline,
-                  airframe: activeScenario.airframe,
-                  originAirport: activeScenario.originAirport,
-                  destinationAirport: activeScenario.destinationAirport,
-                  destinationName: activeScenario.destinationName,
-                  runway: activeScenario.runway,
-                  icao24: activeScenario.icao24,
-                  airborneSeconds: activeScenario.plannedAirborneSeconds,
-                  fuelBurnKg,
-                  co2Kg,
-                  costUSDC: usdcCost,
-                  blockNumber: 61044782,
-                  txHash:
-                    settlementTxHash ||
-                    "0x6f74a81c4e127394c8b09ad3833d7122db529cbef2e6ea9b5f543666d3a3c10a",
-                  explorerUrl: settlementTxHash
-                    ? `https://testnet.arcscan.app/tx/${settlementTxHash}`
-                    : "https://testnet.arcscan.app",
-                  agentAddress: "0x1698fdA3A9A8Ca9530434e545986176579F01650",
-                  vaultAddress: DEPLOYED_VAULT_ADDRESS,
-                  timestamp: Date.now(),
-                });
-              }
-              setIsCertificateOpen(true);
-            }}
-            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-black/10 hover:border-black/25 text-black text-xs font-medium shadow-xs btn-tactile cursor-pointer"
-          >
-            <ShieldCheck className="w-3.5 h-3.5 text-[#7C4DFF]" />
-            <span>Audit Certificate</span>
-          </button>
-
-          {ready && authenticated && user?.wallet ? (
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white border border-black/10 shadow-sm text-xs font-mono">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>
-                {user.wallet.address.slice(0, 6)}...{user.wallet.address.slice(-4)}
-              </span>
-              <button
-                type="button"
-                onClick={logout}
-                className="text-[10px] text-[#666666] hover:text-black font-sans ml-1 btn-tactile cursor-pointer"
-              >
-                Disconnect
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={login}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-black hover:bg-neutral-800 text-white text-xs font-medium shadow-sm btn-tactile cursor-pointer"
-            >
-              <Wallet className="w-3.5 h-3.5" />
-              <span>Connect Treasury</span>
-            </button>
-          )}
-        </div>
-      </header>
-
-      {/* ── MAIN FLIGHT CONSOLE (3 COLUMNS) ── */}
-      <main className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-5 min-h-0">
-        {/* ── LEFT COLUMN (4 Cols): Dual-Mode Selector & Fleet / Replay HUD ── */}
-        <section className="lg:col-span-4 flex flex-col gap-4 min-h-0">
-          {/* Mode Switcher */}
-          <div className="flex p-1 bg-white rounded-xl border border-black/10 shadow-sm shrink-0">
-            <button
-              type="button"
-              onClick={() => {
-                setMode("live");
-                setIsPlaying(false);
+      {/* ── 3. MAIN SPATIAL RADAR CANVAS & FLOATING BENTO HUD ── */}
+      <main className="flex-1 relative h-full p-3 pl-3 flex flex-col min-w-0">
+        {activeNavTab === "landed" ? (
+          <div className="w-full h-full overflow-y-auto pr-1">
+            <LandedSettlementQueue
+              flights={landedFlights}
+              onFlightsChange={setLandedFlights}
+              activeSessionCap={sessionData.budgetCapUSDC}
+              onSettlementSuccess={(txHash, flight) => {
+                fetchBalance();
+                fetchCarbonCredits();
               }}
-              className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer btn-tactile ${
-                mode === "live"
-                  ? "bg-black text-white shadow-sm"
-                  : "text-[#666666] hover:text-black"
-              }`}
-            >
-              <Radio className={`w-3.5 h-3.5 ${mode === "live" ? "text-[#F5FF7A] animate-pulse" : ""}`} />
-              <span>Live Radar (ADS-B)</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMode("replay");
-                setIsPlaying(false);
-              }}
-              className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer btn-tactile ${
-                mode === "replay"
-                  ? "bg-[#7C4DFF] text-white shadow-sm"
-                  : "text-[#666666] hover:text-black"
-              }`}
-            >
-              <Plane className="w-3.5 h-3.5" />
-              <span>Multi-Flight Replay</span>
-            </button>
+            />
           </div>
-
-          {/* Top Info Card */}
-          <div className="bg-white rounded-2xl p-5 border border-black/5 shadow-sm flex flex-col shrink-0">
-            <div className="flex justify-between items-start mb-3">
-              <div>
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-[#666666]">
-                  {mode === "replay"
-                    ? `${activeScenario.airline} · ${activeScenario.airframe}`
-                    : "Active In-Flight Radar Target"}
-                </span>
-                <div className="font-serif text-[30px] font-normal leading-none mt-1 flex items-center gap-2">
-                  <span>
-                    {mode === "replay"
-                      ? activeScenario.callsign
-                      : activeData?.callsign || (isLiveLoading ? "Acquiring Signals..." : "Scanning Airspace...")}
-                  </span>
-                  {mode === "replay" ? (
-                    <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full bg-[#7C4DFF]/10 text-[#7C4DFF] border border-[#7C4DFF]/20">
-                      {activeScenario.category.replace("_", " ")}
-                    </span>
-                  ) : mode === "live" && activeData ? (
-                    <span className="text-[10px] font-sans font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                      LIVE
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-              <div className="text-right">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-[#666666]">
-                  Arc Treasury
-                </span>
-                <div className="font-serif text-[24px] font-normal leading-none mt-1 text-emerald-600">
-                  {isBalanceLoading ? (
-                    <span className="text-base text-[#666666] font-mono animate-pulse">Querying...</span>
-                  ) : (
-                    `$${treasuryBalance || "0.00"} USDC`
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <p className="text-xs text-[#666666] leading-relaxed">
-              {mode === "replay"
-                ? activeScenario.description
-                : "Continuous ADS-B transponder telemetry evaluated against ICAO Doc 9889 fuel consumption standards."}
-            </p>
-          </div>
-
-          {/* Mode-Specific Panel: Replay Controls OR Live Fleet List */}
-          <div className="flex-1 bg-white rounded-2xl p-4 border border-black/5 shadow-sm flex flex-col min-h-0 overflow-hidden">
-            {mode === "replay" ? (
-              <div className="flex flex-col h-full justify-between gap-3">
-                <div className="flex flex-col gap-2.5">
-                  {/* Multi-Flight Scenario Selector (Category 4) */}
-                  <div>
-                    <div className="flex justify-between items-center text-[10px] font-semibold uppercase tracking-wider text-[#666666] mb-1.5">
-                      <span>Select Commercial Scenario</span>
-                      <span className="font-mono text-neutral-400">ICAO Benchmarked</span>
-                    </div>
-                    <div className="grid grid-cols-3 gap-1.5 p-1 bg-neutral-100 rounded-xl">
-                      {REPLAY_SCENARIOS.map((scenario, idx) => (
-                        <button
-                          key={scenario.id}
-                          type="button"
-                          onClick={() => {
-                            setSelectedScenarioIndex(idx);
-                            setReplayIndex(0);
-                            setIsPlaying(false);
-                            setIsSettled(false);
-                            setSettlementTxHash(undefined);
-                          }}
-                          className={`py-1.5 px-2 rounded-lg text-xs font-mono transition-all flex flex-col items-center justify-center cursor-pointer btn-tactile ${
-                            selectedScenarioIndex === idx
-                              ? "bg-white text-black font-bold shadow-xs border border-black/10"
-                              : "text-[#666666] hover:text-black font-medium"
-                          }`}
-                        >
-                          <span className="font-bold">{scenario.callsign}</span>
-                          <span className="text-[9px] font-sans text-neutral-500 truncate w-full text-center">
-                            {scenario.airframe.split(" ")[1] || scenario.airframe}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Scrubber and Frame counter */}
-                  <div>
-                    <div className="flex items-center justify-between text-xs font-mono mb-2">
-                      <span className="text-[#666666] font-semibold">WAYPOINT APPROACH</span>
-                      <span className="font-bold">
-                        Frame {String(replayIndex + 1).padStart(2, "0")} / {activeReplayFrames.length}
-                      </span>
-                    </div>
-
-                    <input
-                      type="range"
-                      min={0}
-                      max={activeReplayFrames.length - 1}
-                      value={replayIndex}
-                      onChange={(e) => {
-                        const idx = Number(e.target.value);
-                        setReplayIndex(idx);
-                        if (activeReplayFrames[idx].onGround && !isSettled && !isSettling) {
-                          triggerWheelsDownSettlement(activeReplayFrames[idx]);
-                        }
-                      }}
-                      className="w-full h-2 bg-neutral-200 rounded-lg appearance-none cursor-pointer accent-[#7C4DFF]"
-                    />
-                  </div>
-
-                  {/* Status Banner */}
-                  <div
-                    className={`p-3 rounded-xl flex items-center justify-between text-xs font-mono transition-colors ${
-                      isSettled
-                        ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-700"
-                        : isLanded
-                        ? "bg-[#FF5F1F]/10 border border-[#FF5F1F]/30 text-[#FF5F1F]"
-                        : "bg-neutral-100 text-neutral-700"
-                    }`}
-                  >
-                    <span className="font-bold">
-                      {isSettling
-                        ? "BROADCASTING SETTLEMENT..."
-                        : isSettled
-                        ? "SETTLED ON ARC TESTNET"
-                        : isLanded
-                        ? "TOUCHDOWN DETECTED"
-                        : "DESCENT IN PROGRESS"}
-                    </span>
-                    <span>
-                      {isSettling ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : isSettled ? (
-                        "Verified"
-                      ) : (
-                        `${activeReplayFrame.baroAltitudeMeters}m Alt`
-                      )}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Playback Controls */}
-                <div className="flex flex-col gap-2 pt-2 border-t border-black/5">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={handleTogglePlay}
-                        disabled={isSettling}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-black hover:bg-neutral-800 text-white font-semibold text-xs btn-tactile cursor-pointer disabled:opacity-50"
-                      >
-                        {isPlaying ? <Pause className="w-3.5 h-3.5 fill-current" /> : <Play className="w-3.5 h-3.5 fill-current" />}
-                        <span>{isPlaying ? "Pause" : "Play"}</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleStepForward}
-                        disabled={isSettling}
-                        title="Step 1 Frame"
-                        className="p-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-black text-xs btn-tactile cursor-pointer disabled:opacity-50"
-                      >
-                        <SkipForward className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleReset}
-                        disabled={isSettling}
-                        title="Reset"
-                        className="p-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-black text-xs btn-tactile cursor-pointer disabled:opacity-50"
-                      >
-                        <RotateCcw className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-
-                    {/* Speed buttons */}
-                    <div className="flex items-center gap-1 bg-neutral-100 p-0.5 rounded-lg text-[10px] font-mono font-bold">
-                      {[1, 2, 5].map((s) => (
-                        <button
-                          key={s}
-                          type="button"
-                          onClick={() => setReplaySpeed(s)}
-                          className={`px-2 py-0.5 rounded cursor-pointer btn-tactile ${
-                            replaySpeed === s ? "bg-white text-black shadow-sm" : "text-[#666666]"
-                          }`}
-                        >
-                          {s}x
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleJumpToTouchdown}
-                    disabled={isSettled || isSettling}
-                    className="w-full py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm btn-tactile cursor-pointer disabled:opacity-40"
-                  >
-                    {isSettling ? (
-                      <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span>Confirming on ArcScan...</span>
-                      </>
-                    ) : (
-                      <>
-                        <FastForward className="w-3.5 h-3.5" />
-                        <span>Jump to Touchdown & Settle</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-col h-full min-h-0">
-                <div className="flex justify-between items-center mb-2 shrink-0">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-[#666666]">
-                    Active Transponders ({liveFlights.length})
-                  </span>
-                  <button
-                    type="button"
-                    onClick={fetchLiveFlights}
-                    disabled={isLiveLoading}
-                    className="text-[10px] text-[#007AFF] hover:underline font-mono cursor-pointer disabled:opacity-50"
-                  >
-                    {isLiveLoading ? "Polling..." : "Refresh"}
-                  </button>
-                </div>
-
-                <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar min-h-0">
-                  {liveFlights.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center text-xs text-[#666666] font-mono py-8">
-                      <Radio className="w-6 h-6 text-[#7C4DFF] animate-pulse mb-2" />
-                      <span>Scanning European Flight Corridor...</span>
-                      <span className="text-[10px] text-neutral-400 mt-1">Connecting to OpenSky Network ADS-B</span>
-                    </div>
-                  ) : (
-                    liveFlights.map((flight) => {
-                      const isSelected = selectedFlight?.callsign === flight.callsign;
-                      const altFt = Math.round(flight.baroAltitudeMeters * 3.28084);
-                      return (
-                        <div
-                          key={flight.icao24}
-                          onClick={() => setSelectedFlight(flight)}
-                          className={`p-2.5 rounded-xl border text-xs cursor-pointer transition-all card-tactile ${
-                            isSelected
-                              ? "bg-neutral-50 border-black shadow-sm"
-                              : "bg-white border-black/5 hover:border-black/20"
-                          }`}
-                        >
-                          <div className="flex justify-between items-center font-mono">
-                            <span className="font-bold text-black">{flight.callsign}</span>
-                            <span className="text-[10px] text-emerald-600 font-semibold">
-                              {altFt.toLocaleString()} ft
-                            </span>
-                          </div>
-                          <div className="flex justify-between items-center text-[10px] text-[#666666] mt-1 font-sans">
-                            <span>{flight.originCountry}</span>
-                            <span className="font-mono">{Math.round(flight.velocityMps * 1.94384)} kts</span>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </section>
-
-        {/* ── CENTER COLUMN (5 Cols): Live Radar Map Canvas & 1inch Aqua Pipeline ── */}
-        <section className="lg:col-span-5 flex flex-col gap-3 min-h-0">
-          <div className="flex-1 bg-white rounded-2xl p-3 border border-black/5 shadow-sm flex flex-col min-h-0 relative overflow-hidden">
-            {/* Map Header Overlay */}
-            <div className="flex justify-between items-center mb-2 px-2 shrink-0">
-              <div className="flex items-center gap-2 text-xs font-mono font-bold">
-                <Globe className="w-3.5 h-3.5 text-[#007AFF]" />
-                <span>ADS-B RADAR CANVAS</span>
-              </div>
-              <div className="flex items-center gap-2 text-[10px] font-mono text-[#666666]">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span>{liveSource}</span>
-              </div>
-            </div>
-
-            {/* Fullscreen Map Canvas */}
-            <div className="flex-1 rounded-xl overflow-hidden border border-black/5 relative min-h-[240px] isolate z-0">
-              <WindyFlightMap
+        ) : (
+          <div className="relative w-full h-full rounded-3xl overflow-hidden border border-black/[0.08] shadow-[0_4px_24px_rgba(0,0,0,0.04)] bg-[#0B0F19]">
+            {/* Top Floating Descent Timeline Bar (Matching Reference Top Scale) */}
+            <div className="absolute top-3 left-3 right-3 z-30">
+              <DescentTimelineBar
+                replayIndex={replayIndex}
+                totalFrames={activeReplayFrames.length}
+                isPlaying={isPlaying}
+                isLanded={isLanded}
+                isSettled={isSettled}
+                isSettling={isSettling}
+                currentAltitudeM={activeAltitude}
                 mode={mode}
-                liveFlights={liveFlights}
-                selectedFlight={selectedFlight}
-                replayFrame={mode === "replay" ? activeReplayFrame : null}
-                replayTrack={mode === "replay" ? activeReplayFrames : []}
-                destinationLabel={
-                  mode === "replay"
-                    ? `${activeScenario.destinationAirport} · ${activeScenario.destinationName}`
-                    : undefined
-                }
-                onSelectFlight={(flight) => {
-                  if ("icao24" in flight) {
-                    setSelectedFlight(flight as LiveFlightSummary);
-                    setMode("live");
+                onTogglePlay={() => {
+                  if (replayIndex >= activeReplayFrames.length - 1) {
+                    setReplayIndex(0);
+                    setIsSettled(false);
+                    setSettlementTxHash(undefined);
+                    setCertificateData(null);
+                    setIsPlaying(true);
+                  } else {
+                    setIsPlaying((p) => !p);
                   }
                 }}
+                onStepNext={handleStepNext}
+                onJumpToTouchdown={handleJumpToTouchdown}
+                onTriggerSettlement={() => {
+                  if (mode === "replay") {
+                    triggerWheelsDownSettlement(activeReplayFrame);
+                  } else {
+                    triggerWheelsDownSettlement(selectedFlight);
+                  }
+                }}
+                onOpenCertificate={() => {
+                  ensureCertificateData();
+                  setIsCertificateOpen(true);
+                }}
+                onScrub={(idx) => {
+                  setReplayIndex(idx);
+                  setIsPlaying(false);
+                  const tdIdx = activeScenario.touchdownIndex ?? (activeReplayFrames.length - 4);
+                  if (idx < tdIdx && isSettled) {
+                    setIsSettled(false);
+                    setSettlementTxHash(undefined);
+                    setCertificateData(null);
+                  }
+                  if (idx >= tdIdx && !isSettled && !isSettling) {
+                    triggerWheelsDownSettlement(activeReplayFrames[idx]);
+                  }
+                }}
+                liveCallsign={selectedFlight?.callsign}
+                liveOriginCountry={selectedFlight?.originCountry}
+                liveIcao24={selectedFlight?.icao24}
+                liveEquipmentType={selectedFlight?.equipmentType}
+                liveVelocityMps={selectedFlight?.velocityMps}
+                liveVerticalRateMps={selectedFlight?.verticalRateMps}
+                usdcCost={usdcCost}
+                settlementTxHash={settlementTxHash}
               />
             </div>
-          </div>
 
-          {/* 1inch Aqua Zero-Custody Pipeline (Category 2) */}
-          <AquaFlowVisualizer
-            isLanded={isLanded}
-            isSettled={isSettled}
-            isSettling={isSettling}
-            usdcAmount={usdcCost}
-            co2Kg={co2Kg}
-          />
-        </section>
-
-        {/* ── RIGHT COLUMN (3 Cols): Telemetry HUD, On-Chain Specs & Activity ── */}
-        <section className="lg:col-span-3 flex flex-col gap-4 min-h-0 overflow-y-auto pr-0.5 custom-scrollbar">
-          {/* Telemetry Card */}
-          <div className="bg-white rounded-2xl p-5 border border-black/5 shadow-sm flex flex-col shrink-0">
-            <h2 className="font-serif text-xl font-normal leading-none mb-4 text-black">
-              ICAO Reconciliation
-            </h2>
-
-            {/* 2x2 Telemetry Grid */}
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <div className="border-l-2 border-black pl-3">
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-[#666666] mb-0.5">
-                  Current Alt
-                </div>
-                <div className="font-serif text-[22px] font-normal leading-tight">
-                  {altitudeFeet.toLocaleString()} <span className="text-xs font-sans">ft</span>
-                </div>
-              </div>
-
-              <div className="border-l-2 border-black pl-3">
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-[#666666] mb-0.5">
-                  Ground Speed
-                </div>
-                <div className="font-serif text-[22px] font-normal leading-tight">
-                  {speedKnots} <span className="text-xs font-sans">kts</span>
-                </div>
-              </div>
-
-              <div className="border-l-2 border-black pl-3">
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-[#666666] mb-0.5">
-                  Fuel Flow
-                </div>
-                <div className="font-serif text-[22px] font-normal leading-tight">
-                  {hourlyBurnKg.toLocaleString()} <span className="text-xs font-sans">kg/h</span>
-                </div>
-              </div>
-
-              <div className="border-l-2 border-black pl-3">
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-[#666666] mb-0.5">
-                  Est. CO₂
-                </div>
-                <div className="font-serif text-[22px] font-normal leading-tight text-[#007AFF]">
-                  {(co2Kg / 1000).toFixed(2)} <span className="text-xs font-sans">t</span>
-                </div>
-              </div>
+            {/* Fullscreen Map Canvas (3D Cesium Globe vs 2D Leaflet Radar) */}
+            <div className="w-full h-full">
+              {mapEngine === "3d" ? (
+                <CesiumGlobeViewer
+                  selectedIcao={selectedFlight?.icao24 || selectedFlight?.callsign?.toLowerCase()}
+                  armedIcao={armedFlightCallsign}
+                  onToggleArm={handleToggleArmSettlement}
+                  onArmedTouchdown={handleArmedTouchdown}
+                  onSwitchToLandedTab={() => setActiveNavTab("landed")}
+                  landedCount={landedPendingCount}
+                  onSelectFlight={(meta, enrichment) => {
+                    if (meta) {
+                      setSelectedFlight({
+                        icao24: meta.icao24 || meta.callsign.toLowerCase(),
+                        callsign: meta.callsign,
+                        originCountry: enrichment?.operator || "Commercial Airspace",
+                        longitude: meta.lon,
+                        latitude: meta.lat,
+                        baroAltitudeMeters: Math.round(meta.altitudeM),
+                        velocityMps: Math.round(meta.velocityMps),
+                        trueTrackDeg: Math.round(meta.trueTrackDeg),
+                        verticalRateMps: meta.verticalRateMps,
+                        onGround: meta.onGround,
+                        equipmentType: enrichment?.model || enrichment?.type || "A320-200",
+                      });
+                    } else {
+                      setSelectedFlight(null);
+                    }
+                  }}
+                />
+              ) : (
+                <WindyFlightMap
+                  mode={mode}
+                  liveFlights={liveFlights}
+                  selectedFlight={activeData}
+                  replayFrame={mode === "replay" ? activeReplayFrame : null}
+                  replayTrack={mode === "replay" ? activeReplayFrames : []}
+                  destinationLabel={
+                    mode === "replay"
+                      ? `${activeScenario.destinationAirport} Runway ${activeScenario.runway}`
+                      : undefined
+                  }
+                  onSelectFlight={(flight) => {
+                    setSelectedFlight(flight as LiveFlightSummary);
+                  }}
+                />
+              )}
             </div>
 
-            {/* Specification Data Rows */}
-            <div className="flex flex-col text-xs border-t border-black/5 pt-2">
-              <div className="flex justify-between items-baseline py-1.5 border-b border-black/5">
-                <span className="text-[#666666]">Airframe</span>
-                <span className="font-semibold text-black">
-                  {mode === "replay"
-                    ? activeScenario.airframe
-                    : (activeData as any)?.equipmentType || "Commercial Aircraft"}
-                </span>
-              </div>
-              <div className="flex justify-between items-baseline py-1.5 border-b border-black/5">
-                <span className="text-[#666666]">Transponder</span>
-                <span className="font-semibold font-mono text-black">
-                  {mode === "replay"
-                    ? `0x${activeScenario.icao24.toUpperCase()}`
-                    : activeData && "icao24" in activeData && activeData.icao24
-                    ? `0x${(activeData as any).icao24.toUpperCase()}`
-                    : "ACQUIRING..."}
-                </span>
-              </div>
-              <div className="flex justify-between items-baseline py-1.5 border-b border-black/5">
-                <span className="text-[#666666]">Touchdown Trigger</span>
-                <span className={`font-semibold font-mono ${isLanded ? "text-[#FF5F1F]" : "text-black"}`}>
-                  {isLanded ? "on_ground: true 🛬" : "airborne"}
-                </span>
-              </div>
-              <div className="flex justify-between items-baseline py-1.5">
-                <span className="text-[#666666]">1inch Aqua Vault</span>
-                <a
-                  href={`https://testnet.arcscan.app/address/${DEPLOYED_VAULT_ADDRESS}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-semibold font-mono text-[#007AFF] hover:underline flex items-center gap-0.5"
+            {/* Bottom Left: Mode Switcher & 3D/2D Engine Toggle */}
+            <div className="absolute bottom-3 left-3 z-30 pointer-events-auto flex items-center gap-2">
+              <div className="bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-2xl border border-black/[0.08] shadow-md flex items-center gap-2 text-xs">
+                <button
+                  type="button"
+                  onClick={() => switchMode("replay")}
+                  className={`px-3 py-1 rounded-xl font-medium transition-[transform,colors] duration-140 active:scale-[0.96] cursor-pointer ${
+                    mode === "replay"
+                      ? "bg-black text-white shadow-xs"
+                      : "text-neutral-600 hover:text-black"
+                  }`}
                 >
-                  <span>{DEPLOYED_VAULT_ADDRESS.slice(0, 6)}...{DEPLOYED_VAULT_ADDRESS.slice(-4)}</span>
-                  <ExternalLink className="w-2.5 h-2.5" />
-                </a>
+                  Touchdown Replay
+                </button>
+                <button
+                  type="button"
+                  onClick={() => switchMode("live")}
+                  className={`px-3 py-1 rounded-xl font-medium transition-[transform,colors] duration-140 active:scale-[0.96] cursor-pointer flex items-center gap-1.5 ${
+                    mode === "live"
+                      ? "bg-black text-white shadow-xs"
+                      : "text-neutral-600 hover:text-black"
+                  }`}
+                >
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>Live Radar</span>
+                </button>
+              </div>
+
+              {/* 3D vs 2D Engine Selector */}
+              <div className="bg-[#121622]/90 backdrop-blur-md p-1 rounded-2xl border border-white/10 shadow-md flex items-center gap-1 text-xs font-mono">
+                <button
+                  type="button"
+                  onClick={() => setMapEngine("3d")}
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-xl font-semibold transition-[transform,colors] duration-140 active:scale-[0.96] cursor-pointer ${
+                    mapEngine === "3d"
+                      ? "bg-emerald-500 text-black shadow-xs"
+                      : "text-zinc-400 hover:text-white"
+                  }`}
+                >
+                  <Globe2 className="w-3.5 h-3.5" />
+                  <span>3D Globe</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMapEngine("2d")}
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-xl font-semibold transition-[transform,colors] duration-140 active:scale-[0.96] cursor-pointer ${
+                    mapEngine === "2d"
+                      ? "bg-emerald-500 text-black shadow-xs"
+                      : "text-zinc-400 hover:text-white"
+                  }`}
+                >
+                  <Map className="w-3.5 h-3.5" />
+                  <span>2D Map</span>
+                </button>
               </div>
             </div>
-          </div>
 
-          {/* Recent On-Chain Settlements Feed */}
-          <div className="bg-white rounded-2xl p-4 border border-black/5 shadow-sm flex flex-col shrink-0">
-            <div className="flex justify-between items-center mb-3">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-[#666666]">
-                Verified Arc Settlements
-              </span>
-              <span className="text-[9px] font-mono text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded font-bold">
-                LIVE ON-CHAIN
-              </span>
-            </div>
-
-            <div className="space-y-2.5 text-xs">
-              {/* Active demo flight card if settled */}
-              {isSettled && settlementTxHash && (
-                <div className="p-3 rounded-xl bg-emerald-50/60 border border-emerald-300">
-                  <div className="flex justify-between items-start text-[13px]">
-                    <div>
-                      <div className="font-bold text-black flex items-center gap-1.5">
-                        <span>
-                          {mode === "replay"
-                            ? `${activeScenario.callsign} · ${activeScenario.destinationAirport}`
-                            : "DLH400 · FRA"}
-                        </span>
-                        <span className="text-[9px] px-1.5 py-0.5 rounded font-mono font-bold bg-emerald-500 text-white">
-                          JUST SETTLED
-                        </span>
-                      </div>
-                      <div className="text-[10px] text-[#666666] mt-0.5 font-mono">
-                        {mode === "replay"
-                          ? `${activeScenario.airline} ${activeScenario.airframe.split(" ")[0]} · Touchdown Reconciled`
-                          : "Lufthansa A320 · Touchdown Reconciled"}
-                      </div>
-                    </div>
-                    <div className="text-right font-mono">
-                      <div className="font-bold text-xs text-emerald-600">
-                        + {co2Kg} kg CO₂
-                      </div>
-                      <div className="text-[10px] text-[#666666]">
-                        ${usdcCost.toFixed(2)} USDC
-                      </div>
-                    </div>
-                  </div>
-                  <div className="mt-2 pt-1.5 border-t border-emerald-200/60 flex justify-between items-center text-[10px] font-mono">
-                    <span className="text-emerald-700">1inch Aqua Shared TVU</span>
-                    <a
-                      href={`https://testnet.arcscan.app/tx/${settlementTxHash}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-[#007AFF] hover:underline flex items-center gap-0.5"
+          {/* Bottom Right: Avionics & Telemetry Integrity Expandable Drawer */}
+          <div className="absolute bottom-3 right-3 z-30 flex flex-col items-end pointer-events-auto">
+            {/* Expandable Drawer Panel */}
+            {isIntegrityOpen && (
+              <div className="mb-2 w-[420px] max-w-[calc(100vw-48px)] bg-[#0C111D]/95 backdrop-blur-xl border border-white/10 rounded-3xl p-3.5 shadow-2xl space-y-3 animate-in fade-in zoom-in-95 duration-140">
+                {/* Tab Selector */}
+                <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                  <div className="flex items-center gap-1.5 text-xs font-sans">
+                    <button
+                      type="button"
+                      onClick={() => setActiveIntegrityTab("fuel")}
+                      className={`px-3 py-1 rounded-xl font-medium transition-[transform,colors] duration-140 cursor-pointer active:scale-[0.96] ${
+                        activeIntegrityTab === "fuel"
+                          ? "bg-white/15 text-white shadow-xs"
+                          : "text-neutral-400 hover:text-white"
+                      }`}
                     >
-                      <span>ArcScan Receipt</span>
-                      <ExternalLink className="w-2.5 h-2.5" />
-                    </a>
+                      Fuel Flow Dynamics
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveIntegrityTab("integrity")}
+                      className={`px-3 py-1 rounded-xl font-medium transition-[transform,colors] duration-140 cursor-pointer active:scale-[0.96] ${
+                        activeIntegrityTab === "integrity"
+                          ? "bg-white/15 text-white shadow-xs"
+                          : "text-neutral-400 hover:text-white"
+                      }`}
+                    >
+                      Settlement Integrity
+                    </button>
                   </div>
                   <button
                     type="button"
-                    onClick={() => {
-                      if (certificateData) {
-                        setIsCertificateOpen(true);
-                      }
-                    }}
-                    className="mt-2 w-full py-1.5 rounded-lg bg-black hover:bg-neutral-800 text-white text-[11px] font-semibold flex items-center justify-center gap-1.5 btn-tactile cursor-pointer"
+                    onClick={() => setIsIntegrityOpen(false)}
+                    aria-label="Collapse Panel"
+                    className="text-neutral-400 hover:text-white p-1 rounded-lg hover:bg-white/10 cursor-pointer transition-colors duration-140"
                   >
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>View ICAO Audit Certificate</span>
+                    <ChevronDown className="w-4 h-4" />
                   </button>
                 </div>
-              )}
 
-              {/* Real On-Chain Settlements from contract events */}
-              {onChainEvents.map((evt, idx) => (
-                <div key={idx} className="p-2.5 rounded-xl bg-neutral-50/70 border border-black/5 hover:border-black/15 transition-colors">
-                  <div className="flex justify-between items-center font-mono">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-black">{evt.callsign}</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const isDLH = evt.callsign.startsWith("DLH");
-                          const isBAW = evt.callsign.startsWith("BAW");
-                          const isUAE = evt.callsign.startsWith("UAE");
-                          setCertificateData({
-                            flightId: evt.flightId || `${evt.callsign}-${evt.blockNumber}`,
-                            callsign: evt.callsign,
-                            airline: isDLH
-                              ? "Lufthansa"
-                              : isBAW
-                              ? "British Airways"
-                              : isUAE
-                              ? "Emirates"
-                              : "Commercial Carrier",
-                            airframe: isDLH
-                              ? "Airbus A320-200"
-                              : isBAW
-                              ? "Airbus A350-1000"
-                              : isUAE
-                              ? "Airbus A380-800"
-                              : "Airbus A320",
-                            originAirport: isDLH ? "MUC" : isBAW ? "SIN" : isUAE ? "DXB" : "DEP",
-                            destinationAirport: isDLH ? "EDDF" : isBAW ? "EGLL" : isUAE ? "KJFK" : "ARR",
-                            destinationName: isDLH
-                              ? "Frankfurt Main"
-                              : isBAW
-                              ? "London Heathrow"
-                              : isUAE
-                              ? "John F. Kennedy Intl"
-                              : "Destination Airport",
-                            runway: isDLH ? "25L" : isBAW ? "27R" : isUAE ? "13L" : "01",
-                            icao24: isDLH ? "3c6544" : isBAW ? "40751a" : isUAE ? "8964f1" : "3c6544",
-                            airborneSeconds: evt.airborneSeconds || 3600,
-                            fuelBurnKg: Math.round(evt.co2Kg / 3.16),
-                            co2Kg: evt.co2Kg,
-                            costUSDC: evt.usdcAmount,
-                            blockNumber: evt.blockNumber,
-                            txHash: evt.txHash,
-                            explorerUrl: `https://testnet.arcscan.app/tx/${evt.txHash}`,
-                            agentAddress: "0x1698fdA3A9A8Ca9530434e545986176579F01650",
-                            vaultAddress: DEPLOYED_VAULT_ADDRESS,
-                            timestamp: Date.now(),
-                          });
-                          setIsCertificateOpen(true);
-                        }}
-                        className="text-[9px] text-[#007AFF] hover:underline flex items-center gap-0.5 cursor-pointer"
-                      >
-                        <ShieldCheck className="w-2.5 h-2.5" />
-                        <span>Audit Cert</span>
-                      </button>
-                    </div>
-                    <span className="text-[10px] font-bold text-emerald-600">
-                      {evt.co2Kg} kg CO₂
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center text-[10px] font-mono text-[#666666] mt-1">
-                    <span>Block #{evt.blockNumber}</span>
-                    <a
-                      href={`https://testnet.arcscan.app/tx/${evt.txHash}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-[#007AFF] hover:underline flex items-center gap-0.5"
-                    >
-                      <span>Tx {evt.txHash.slice(0, 6)}...</span>
-                      <ExternalLink className="w-2.5 h-2.5" />
-                    </a>
-                  </div>
-                </div>
-              ))}
-
-              {/* Protocol Genesis Card */}
-              <div className="p-2.5 rounded-xl bg-white border border-black/5 text-[10px] font-mono text-[#666666] flex justify-between items-center">
-                <span>AquaCore Registry</span>
-                <a
-                  href={`https://testnet.arcscan.app/address/${DEPLOYED_AQUA_ADDRESS}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-[#007AFF] hover:underline flex items-center gap-0.5"
-                >
-                  <span>{DEPLOYED_AQUA_ADDRESS.slice(0, 6)}...</span>
-                  <ExternalLink className="w-2.5 h-2.5" />
-                </a>
+                {/* Mounted Bento Components */}
+                {activeIntegrityTab === "fuel" ? (
+                  <FuelDynamicsBento
+                    currentFuelBurnRateKgS={currentFuelFlowRate}
+                    benchmarkBurnRateKgS={0.67}
+                    airborneSeconds={airborneSeconds}
+                    fuelBurnKg={fuelBurnKg}
+                  />
+                ) : (
+                  <SettlementIntegrityBento
+                    isSettled={isSettled}
+                    isSettling={isSettling}
+                    settlementTxHash={settlementTxHash}
+                    blockNumber={certificateData?.blockNumber}
+                    runway={mode === "replay" ? activeScenario.runway : "25L"}
+                    destinationAirport={mode === "replay" ? activeScenario.destinationAirport : "EDDF"}
+                  />
+                )}
               </div>
-            </div>
+            )}
+
+            {/* Toggle Button */}
+            <button
+              type="button"
+              onClick={() => setIsIntegrityOpen((prev) => !prev)}
+              className="px-3 py-1.5 rounded-2xl bg-white/95 backdrop-blur-md border border-black/[0.08] shadow-md flex items-center gap-2 text-xs font-medium text-neutral-800 hover:text-black cursor-pointer active:scale-[0.96] transition-[transform,colors] duration-140"
+            >
+              <Activity className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Avionics & Telemetry Integrity</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              {isIntegrityOpen ? (
+                <ChevronDown className="w-3.5 h-3.5 text-neutral-400" />
+              ) : (
+                <ChevronUp className="w-3.5 h-3.5 text-neutral-400" />
+              )}
+            </button>
           </div>
-        </section>
-      </main>
-
-      {/* ── FOOTER ── */}
-      <footer className="flex justify-between items-center text-[11px] font-semibold text-[#666666] shrink-0">
-        <div>ROUTECO2 // AUTONOMOUS_FLIGHT_DISPATCHER</div>
-        <div className="flex gap-6">
-          <span>TELEMETRY: {activeData ? "STABLE" : "SCANNING"}</span>
-          <span>TREASURY: {treasuryBalance ? "SYNCED" : "CONNECTING"}</span>
-          <span>ARC L1: 5042002</span>
-          <span>LATENCY: {rpcLatencyMs !== null ? `${rpcLatencyMs}ms` : "PULLING"}</span>
         </div>
-      </footer>
+      )}
+    </main>
 
-      {/* ── EXECUTIVE FLIGHT SETTLEMENT CERTIFICATE MODAL (Category 5) ── */}
+      {/* ── 4. COMMAND PALETTE MODAL (⌘K) ── */}
+      <CommandSearchModal
+        isOpen={isCommandOpen}
+        onClose={() => setIsCommandOpen(false)}
+        onSelectScenario={(scen, idx) => {
+          setSelectedScenarioIndex(idx);
+          setReplayIndex(0);
+          setIsPlaying(false);
+          setIsSettled(false);
+          setSettlementTxHash(undefined);
+          setCertificateData(null);
+          setMode("replay");
+        }}
+        onSwitchMode={(m) => switchMode(m)}
+        currentMode={mode}
+      />
+
+      {/* ── 5. EXECUTIVE AUDIT CERTIFICATE MODAL ── */}
       <SettlementCertificateModal
         isOpen={isCertificateOpen}
         onClose={() => setIsCertificateOpen(false)}
         data={certificateData}
+      />
+
+      {/* ── 6. 1INCH AQUA SHARED TVU MODAL ── */}
+      <AquaInspectorModal
+        isOpen={isAquaOpen}
+        onClose={() => setIsAquaOpen(false)}
+        isLanded={isLanded}
+        isSettled={isSettled}
+        isSettling={isSettling}
+        usdcAmount={usdcCost}
+        co2Kg={co2Kg}
+        vaultAddress={DEPLOYED_VAULT_ADDRESS}
+      />
+
+      {/* ── 7. PRIVY SCOPED SESSION DELEGATION MODAL (Track 3) ── */}
+      <SessionDelegationModal
+        isOpen={isSessionModalOpen}
+        onClose={() => setIsSessionModalOpen(false)}
+        sessionData={sessionData}
+        onUpdateBudgetCap={(cap) =>
+          setSessionData((prev) => ({ ...prev, budgetCapUSDC: cap }))
+        }
+        onUpdateExpiryHours={(hrs) =>
+          setSessionData((prev) => ({
+            ...prev,
+            expiryHours: hrs,
+            expiresAt: Date.now() + hrs * 3600 * 1000,
+          }))
+        }
+        onAuthorizeSession={() => {
+          setSessionData((prev) => ({
+            ...prev,
+            status: "Active / Delegated",
+            expiresAt: Date.now() + prev.expiryHours * 3600 * 1000,
+          }));
+          toast.success("Session Key Delegated", {
+            description: `Granted ${sessionData.expiryHours}h authorization bounded to SkyRouteVault with $${sessionData.budgetCapUSDC} cap.`,
+          });
+        }}
+        onRevokeSession={() => {
+          setSessionData((prev) => ({ ...prev, status: "Revoked" }));
+          toast.error("Emergency Abort Triggered", {
+            description: "Session delegation key revoked immediately. All automated settlements locked.",
+          });
+        }}
       />
     </div>
   );

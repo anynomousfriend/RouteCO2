@@ -4,7 +4,7 @@
   "description": "Autonomous Flight Dispatcher Daemon & ICAO Fuel-Burn Engine on Arc",
   "type": "module",
   "scripts": {
-    "build": "tsc && cp -r src/data dist/ 2>/dev/null || true",
+    "build": "tsc",
     "start": "node dist/dispatcher.js",
     "start:live": "node dist/dispatcher.js --live",
     "test": "vitest run",

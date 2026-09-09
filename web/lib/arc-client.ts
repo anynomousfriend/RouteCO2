@@ -16,7 +16,7 @@ export const arcTestnet = defineChain({
 export const SKYROUTE_VAULT_ADDRESS: Address =
   (process.env.NEXT_PUBLIC_ARC_VAULT_ADDRESS as Address) ||
   (process.env.NEXT_PUBLIC_SKYROUTE_VAULT_ADDRESS as Address) ||
-  "0x655cf529bf4838c30227e4838a95b9d6a39c7f8c";
+  "0xb579e26C81FDf858a9A6a0F3CcAB497a70343c5d";
 
 export const SKYROUTE_VAULT_ABI = [
   {
@@ -27,6 +27,7 @@ export const SKYROUTE_VAULT_ABI = [
       { name: "aircraftCategory", type: "string" },
       { name: "treasury", type: "address" },
       { name: "maxBudgetUSDC", type: "uint256" },
+      { name: "swapVmBytecode", type: "bytes" },
     ],
     outputs: [{ name: "flightId", type: "bytes32" }],
     stateMutability: "nonpayable",
@@ -42,7 +43,14 @@ export const SKYROUTE_VAULT_ABI = [
       { name: "usdcAmount", type: "uint256" },
     ],
     outputs: [],
-    stateMutability: "nonpayable",
+    stateMutability: "payable",
+  },
+  {
+    type: "function",
+    name: "totalCarbonOffsetKg",
+    inputs: [{ name: "treasury", type: "address" }],
+    outputs: [{ name: "offsetKg", type: "uint256" }],
+    stateMutability: "view",
   },
   {
     type: "function",

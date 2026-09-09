@@ -1,7 +1,9 @@
-# Environment files
+# Environment & Credential files
 .env
 .env.local
 .env.*.local
+*opensky*.json
+credentials.json
 
 # Node & Next.js
 node_modules/
@@ -10,6 +12,7 @@ out/
 build/
 dist/
 *.tsbuildinfo
+web/public/cesium/
 
 # Foundry
 cache/
@@ -27,3 +30,4 @@ broadcast/
 .agents/
 .superpowers/
 bin/
+demo.md

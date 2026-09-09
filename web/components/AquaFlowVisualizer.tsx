@@ -36,7 +36,7 @@ export function AquaFlowVisualizer({
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 items-stretch">
         {/* Node 1: Corporate Treasury */}
         <div
-          className={`p-2.5 rounded-lg border transition-all flex flex-col justify-between ${
+          className={`p-2.5 rounded-lg border transition-[background-color,border-color,box-shadow,opacity] duration-140 flex flex-col justify-between ${
             isSettled
               ? "bg-white border-black/10"
               : "bg-white border-[#007AFF]/30 shadow-xs"
@@ -54,7 +54,7 @@ export function AquaFlowVisualizer({
 
         {/* Node 2: Sensor Trigger */}
         <div
-          className={`p-2.5 rounded-lg border transition-all flex flex-col justify-between ${
+          className={`p-2.5 rounded-lg border transition-[background-color,border-color,box-shadow,opacity] duration-140 flex flex-col justify-between ${
             isLanded
               ? "bg-emerald-50/60 border-emerald-400/50 shadow-xs"
               : "bg-white border-black/10"
@@ -74,7 +74,7 @@ export function AquaFlowVisualizer({
 
         {/* Node 3: 1inch Aqua Settlement */}
         <div
-          className={`p-2.5 rounded-lg border transition-all flex flex-col justify-between ${
+          className={`p-2.5 rounded-lg border transition-[background-color,border-color,box-shadow,opacity] duration-140 flex flex-col justify-between ${
             isSettling
               ? "bg-amber-50 border-amber-300 animate-pulse"
               : isSettled
@@ -96,7 +96,7 @@ export function AquaFlowVisualizer({
 
         {/* Node 4: Verified On-Chain State */}
         <div
-          className={`p-2.5 rounded-lg border transition-all flex flex-col justify-between ${
+          className={`p-2.5 rounded-lg border transition-[background-color,border-color,box-shadow,opacity] duration-140 flex flex-col justify-between ${
             isSettled
               ? "bg-emerald-50 border-emerald-500 shadow-sm"
               : "bg-white border-black/10 opacity-70"

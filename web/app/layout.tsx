@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Toaster } from "sonner";
 import "./globals.css";
 import Providers from "../components/Providers";
+import { AgentationToolbar } from "../components/AgentationToolbar";
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "https://routeco2.vercel.app"),
@@ -42,6 +43,7 @@ export default function RootLayout({
       <body className="bg-[#EBEBEB] text-[#000000] min-h-screen antialiased selection:bg-[#7C4DFF]/20 selection:text-[#000000]">
         <Providers>
           {children}
+          <AgentationToolbar />
           <Toaster
             position="bottom-right"
             theme="light"
