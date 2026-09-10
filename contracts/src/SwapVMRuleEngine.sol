@@ -5,8 +5,17 @@ import {ISwapVMRuleEngine} from "./interfaces/ISwapVMRuleEngine.sol";
 
 /// @title SwapVMRuleEngine
 /// @notice SwapVM Flight Fuel-Efficiency Curve Engine conforming to AGENT.md Section 3 & 4.2
-/// @dev Interprets off-chain compiled SwapVM bytecode opcodes representing aircraft aerodynamic efficiency
+/// @dev Arc-local compact encoding of real 1inch SwapVM programs (ground truth: github.com/1inch/swap-vm).
+///  Real SwapVM is deployed at 0x111111338c5091E8440b67B168bAe16a668AC0De on Ethereum/Base/Optimism/Polygon/
+///  Arbitrum/Avalanche/BSC/Linea/Sonic/Unichain/Gnosis/zkSync/Cronos/Monad/HyperEVM (NOT on Arc 5042002).
+///  Real bytecode format is [opcode_index][args_length][args_data] with instructions _dynamicBalancesXD,
+///  _flatFeeAmountInXD, _decayXD, _xycSwapXD, _staticBalancesXD. This contract evaluates the Arc-local
+///  1-byte compact projection: 0x01=_dynamicBalancesXD base allocation, 0x02=cruise/climb pricing curve
+///  (real equivalents: oracle/base-fee adjusters), 0x03=_flatFeeAmountInXD carbon fee, 0x04=_decayXD
+///  waypoint/descent decay. Off-chain compiler (agent/src/swapvm-compiler.ts) maps these to full programs.
 contract SwapVMRuleEngine is ISwapVMRuleEngine {
+    /// @notice Canonical 1inch SwapVM router (all supported chains above; Arc uses this engine as local projection)
+    address public constant SWAPVM_ROUTER = 0x111111338c5091E8440b67B168bAe16a668AC0De;
     // SwapVM Flight Curve Opcodes
     uint8 public constant OP_DYNAMIC_BALANCES = 0x01; // Base allocation from duration and hourly burn
     uint8 public constant OP_PIECEWISE_LINEAR_SCALE = 0x02; // Altitude cruise discount & climb thrust scale

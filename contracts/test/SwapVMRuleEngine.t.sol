@@ -18,6 +18,7 @@ contract SwapVMRuleEngineTest is Test {
     }
 
     function test_ValidateBytecode_ValidOpcodes() public view {
+        assertEq(engine.SWAPVM_ROUTER(), 0x111111338c5091E8440b67B168bAe16a668AC0De);
         assertTrue(engine.validateBytecode(BYTECODE_BASE));
         assertTrue(engine.validateBytecode(BYTECODE_CRUISE));
         assertTrue(engine.validateBytecode(BYTECODE_FULL));

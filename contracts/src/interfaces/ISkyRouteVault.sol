@@ -3,6 +3,10 @@ pragma solidity 0.8.26;
 
 /// @title ISkyRouteVault
 /// @notice Interface for SkyRouteVault - 1inch Aqua App for autonomous Wheels-Down carbon offset settlements
+/// @dev Aqua App pattern (ground truth: github.com/1inch/aqua/src/AquaApp.sol):
+///  registerFlightManifest ships an immutable Aqua strategy (treasury keeps custody);
+///  settleWheelsDown pulls real USDC via Aqua.pull and retires carbon in the vault ledger
+///  (carbon retirement is on-chain accounting + event, not an ERC20 transfer).
 interface ISkyRouteVault {
     struct FlightManifest {
         string callsign;
@@ -10,6 +14,7 @@ interface ISkyRouteVault {
         address treasury;
         uint256 maxBudgetUSDC;
         bytes swapVmBytecode;
+        bytes32 strategyHash;
         bool settled;
     }
 
@@ -19,6 +24,8 @@ interface ISkyRouteVault {
         address treasury,
         uint256 maxBudget
     );
+
+    event FlightStrategyShipped(bytes32 indexed flightId, bytes32 indexed strategyHash, address indexed treasury);
 
     event WheelsDownSettled(
         bytes32 indexed flightId,
@@ -31,7 +38,14 @@ interface ISkyRouteVault {
     event AuthorizedAgentUpdated(address indexed agent, bool authorized);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
     event FeesWithdrawn(address indexed to, uint256 amount);
-    event AquaSwapExecuted(address indexed tokenIn, uint256 amountIn, address indexed tokenOut, uint256 amountOut);
+    event AquaSwapExecuted(
+        address indexed tokenIn,
+        uint256 amountIn,
+        address indexed tokenOut,
+        uint256 amountOut,
+        address maker,
+        bytes32 strategyHash
+    );
 
     function aqua() external view returns (address);
     function usdc() external view returns (address);
@@ -44,6 +58,7 @@ interface ISkyRouteVault {
         address treasury,
         uint256 maxBudgetUSDC,
         bytes memory swapVmBytecode,
+        bytes32 strategyHash,
         bool settled
     );
 
@@ -76,11 +91,15 @@ interface ISkyRouteVault {
 
     function withdrawFees(address payable to, uint256 amount) external;
 
+    /// @notice Aqua App swap callback (signature-conformant with 1inch Aqua IAquaAppSwapCallback)
     function aquaAppSwapCallback(
         address tokenIn,
-        uint256 amountIn,
         address tokenOut,
+        uint256 amountIn,
         uint256 amountOut,
-        bytes calldata data
+        address maker,
+        address app,
+        bytes32 strategyHash,
+        bytes calldata takerData
     ) external;
 }

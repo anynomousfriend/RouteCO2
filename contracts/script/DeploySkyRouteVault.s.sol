@@ -9,14 +9,18 @@ import {SwapVMRuleEngine} from "../src/SwapVMRuleEngine.sol";
 /**
  * @title DeploySkyRouteVault
  * @notice Foundry deployment script for SkyRouteVault, AquaCore & SwapVMRuleEngine on Arc Testnet (Chain ID 5042002)
- * @dev Usage:
+ * @dev Ground truth: github.com/1inch/aqua (ship/dock/pull/push), github.com/1inch/swap-vm
+ *  (router 0x111111338c5091E8440b67B168bAe16a668AC0De — NOT deployed on Arc, so this repo
+ *  deploys an interface-conformant AquaCore port + Arc-local SwapVMRuleEngine projection).
+ *  Circle Arc Testnet USDC ERC-20: 0x3600000000000000000000000000000000000000 (also precompile .0001).
+ *  Usage:
  *   forge script script/DeploySkyRouteVault.s.sol:DeploySkyRouteVault \
  *     --rpc-url https://rpc.testnet.arc.network \
  *     --broadcast -vvvv
  */
 contract DeploySkyRouteVault is Script {
-    // Arc native / testnet USDC precompile / identifier
-    address public constant DEFAULT_ARC_USDC = 0x3600000000000000000000000000000000000001;
+    // Circle Arc Testnet USDC ERC-20 (ground truth: developers.circle.com ARC-TESTNET transfer guide)
+    address public constant DEFAULT_ARC_USDC = 0x3600000000000000000000000000000000000000;
 
     function run() external returns (address vaultAddress, address aquaAddress, address swapVmAddress) {
         uint256 deployerPrivateKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
