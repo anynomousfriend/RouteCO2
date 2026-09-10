@@ -51,6 +51,8 @@ export interface ReplayScenario {
   description: string;
   touchdownIndex: number;
   frames: ReplayFrame[];
+  /** Synthetic physics demo trajectory (3° glideslope equations), NOT live ADS-B telemetry. */
+  synthetic: boolean;
 }
 
 /**
@@ -234,7 +236,8 @@ export const REPLAY_SCENARIOS: ReplayScenario[] = [
     plannedAirborneSeconds: 3600,
     icao24: "3c6544",
     pricePerTonneUSDC: 25.0,
-    description: "Short-haul European feeder arrival into Frankfurt Airport.",
+    description: "Short-haul European feeder arrival into Frankfurt Airport. Synthetic physics demo, not live telemetry.",
+    synthetic: true,
     touchdownIndex: 15,
     frames: generateGlideslopeTrajectory({
       callsign: "DLH400",
@@ -260,7 +263,8 @@ export const REPLAY_SCENARIOS: ReplayScenario[] = [
     plannedAirborneSeconds: 21600,
     icao24: "4075c3",
     pricePerTonneUSDC: 25.0,
-    description: "Transatlantic wide-body twin-jet arrival into London Heathrow.",
+    description: "Transatlantic wide-body twin-jet arrival into London Heathrow. Synthetic physics demo, not live telemetry.",
+    synthetic: true,
     touchdownIndex: 17,
     frames: generateGlideslopeTrajectory({
       callsign: "BAW117",
@@ -286,7 +290,8 @@ export const REPLAY_SCENARIOS: ReplayScenario[] = [
     plannedAirborneSeconds: 46800,
     icao24: "8964b2",
     pricePerTonneUSDC: 25.0,
-    description: "Ultra-long-haul quad-engine superjumbo arrival into New York JFK.",
+    description: "Ultra-long-haul quad-engine superjumbo arrival into New York JFK. Synthetic physics demo, not live telemetry.",
+    synthetic: true,
     touchdownIndex: 17,
     frames: generateGlideslopeTrajectory({
       callsign: "UAE201",
@@ -312,7 +317,8 @@ export const REPLAY_SCENARIOS: ReplayScenario[] = [
     plannedAirborneSeconds: 2700,
     icao24: "394a12",
     pricePerTonneUSDC: 25.0,
-    description: "Regional European feeder jet arrival into Paris Charles de Gaulle.",
+    description: "Regional European feeder jet arrival into Paris Charles de Gaulle. Synthetic physics demo, not live telemetry.",
+    synthetic: true,
     touchdownIndex: 15,
     frames: generateGlideslopeTrajectory({
       callsign: "AFR1248",

@@ -1,5 +1,13 @@
 import { createPublicClient, http, defineChain, type Address } from "viem";
 
+/**
+ * Arc Testnet (Chain ID 5042002).
+ * Ground truth: developers.circle.com + docs.arc.io — native gas IS USDC; Arc Testnet
+ * USDC ERC-20 0x3600000000000000000000000000000000000000; RPC https://rpc.testnet.arc.network;
+ * explorer https://testnet.arcscan.app. Arc rejects blob (type-3) transactions.
+ * viem nativeCurrency decimals here describe the gas display unit; ERC-20 USDC itself is 6 decimals.
+ */
+
 export const arcTestnet = defineChain({
   id: 5042002,
   name: "Arc Testnet",
@@ -16,7 +24,7 @@ export const arcTestnet = defineChain({
 export const SKYROUTE_VAULT_ADDRESS: Address =
   (process.env.NEXT_PUBLIC_ARC_VAULT_ADDRESS as Address) ||
   (process.env.NEXT_PUBLIC_SKYROUTE_VAULT_ADDRESS as Address) ||
-  "0xb579e26C81FDf858a9A6a0F3CcAB497a70343c5d";
+  "0x469CA8E59ae25CBEEC2eA52617163E2396B9bdA1";
 
 export const SKYROUTE_VAULT_ABI = [
   {
@@ -61,8 +69,17 @@ export const SKYROUTE_VAULT_ABI = [
       { name: "aircraftCategory", type: "string" },
       { name: "treasury", type: "address" },
       { name: "maxBudgetUSDC", type: "uint256" },
+      { name: "swapVmBytecode", type: "bytes" },
+      { name: "strategyHash", type: "bytes32" },
       { name: "settled", type: "bool" },
     ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "authorizedAgents",
+    inputs: [{ name: "agent", type: "address" }],
+    outputs: [{ name: "isAuthorized", type: "bool" }],
     stateMutability: "view",
   },
   {

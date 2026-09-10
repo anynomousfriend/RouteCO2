@@ -19,6 +19,9 @@ export interface LiveLandedFlightRecord {
   landedAt: string;
   airborneSeconds: number;
   distanceKm: number;
+  /** Category-heuristic estimate, NOT measured leg history (see estimationMethod). */
+  estimatedAirborne: boolean;
+  estimationMethod: string;
   estimate: LandedFlightSettlementEstimate;
   status: "PENDING" | "SETTLING" | "SETTLED";
   txHash?: string;
@@ -144,7 +147,9 @@ export async function GET(request: NextRequest) {
     const typeCode = ac.t ? String(ac.t).toUpperCase() : null;
     const airframe = resolveAirframe(typeCode, callsign);
 
-    // Differentiate typical short-haul vs long-haul flights based on category
+    // Differentiate typical short-haul vs long-haul flights based on category.
+    // ESTIMATE ONLY: live ADS-B gives current surface position, not full leg history,
+    // so duration/distance/origin are category heuristics, not measured values.
     let airborneSeconds = 5400; // default 1.5h
     let distanceKm = 750;
     let origin = "Regional / European Sector";
@@ -188,6 +193,8 @@ export async function GET(request: NextRequest) {
       landedAt: landedStatusDesc,
       airborneSeconds,
       distanceKm,
+      estimatedAirborne: true,
+      estimationMethod: "category-heuristic: duration/distance inferred from airframe class, not measured ADS-B leg history",
       estimate: {
         ...estimate,
         usdcAmountMicro: estimate.usdcAmountMicro.toString(),

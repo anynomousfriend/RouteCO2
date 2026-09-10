@@ -1,86 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   createWalletClient,
-  createPublicClient,
   http,
-  defineChain,
   keccak256,
   encodePacked,
+  encodeAbiParameters,
   type Address,
   type Hex,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import {
+  arcTestnet,
+  SKYROUTE_VAULT_ABI,
+  publicArcClient,
+} from "@/lib/arc-client";
 
 export const dynamic = "force-dynamic";
-
-// Arc Testnet Chain Definition (Chain ID 5042002)
-const arcTestnet = defineChain({
-  id: 5042002,
-  name: "Arc Testnet",
-  nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
-  rpcUrls: {
-    default: { http: ["https://rpc.testnet.arc.network"] },
-  },
-  blockExplorers: {
-    default: { name: "ArcScan", url: "https://testnet.arcscan.app" },
-  },
-});
-
-const SKYROUTE_VAULT_ABI = [
-  {
-    type: "function",
-    name: "registerFlightManifest",
-    inputs: [
-      { name: "callsign", type: "string" },
-      { name: "aircraftCategory", type: "string" },
-      { name: "treasury", type: "address" },
-      { name: "maxBudgetUSDC", type: "uint256" },
-      { name: "swapVmBytecode", type: "bytes" },
-    ],
-    outputs: [{ name: "flightId", type: "bytes32" }],
-    stateMutability: "nonpayable",
-  },
-  {
-    type: "function",
-    name: "settleWheelsDown",
-    inputs: [
-      { name: "flightId", type: "bytes32" },
-      { name: "airborneSeconds", type: "uint256" },
-      { name: "fuelBurnKg", type: "uint256" },
-      { name: "co2Kg", type: "uint256" },
-      { name: "usdcAmount", type: "uint256" },
-    ],
-    outputs: [],
-    stateMutability: "payable",
-  },
-  {
-    type: "function",
-    name: "totalCarbonOffsetKg",
-    inputs: [{ name: "treasury", type: "address" }],
-    outputs: [{ name: "offsetKg", type: "uint256" }],
-    stateMutability: "view",
-  },
-  {
-    type: "function",
-    name: "manifests",
-    inputs: [{ name: "flightId", type: "bytes32" }],
-    outputs: [
-      { name: "callsign", type: "string" },
-      { name: "aircraftCategory", type: "string" },
-      { name: "treasury", type: "address" },
-      { name: "maxBudgetUSDC", type: "uint256" },
-      { name: "settled", type: "bool" },
-    ],
-    stateMutability: "view",
-  },
-  {
-    type: "function",
-    name: "authorizedAgents",
-    inputs: [{ name: "agent", type: "address" }],
-    outputs: [{ name: "authorized", type: "bool" }],
-    stateMutability: "view",
-  },
-] as const;
 
 export async function POST(request: NextRequest) {
   try {
@@ -105,7 +40,7 @@ export async function POST(request: NextRequest) {
     const vaultAddress: Address =
       (process.env.NEXT_PUBLIC_ARC_VAULT_ADDRESS as Address) ||
       (process.env.NEXT_PUBLIC_SKYROUTE_VAULT_ADDRESS as Address) ||
-      "0xb579e26C81FDf858a9A6a0F3CcAB497a70343c5d";
+      "0x469CA8E59ae25CBEEC2eA52617163E2396B9bdA1";
 
     const body = await request.json();
     const {
@@ -121,14 +56,7 @@ export async function POST(request: NextRequest) {
 
     const account = privateKeyToAccount(privateKey);
 
-    const publicClient = createPublicClient({
-      chain: arcTestnet,
-      transport: http("https://rpc.testnet.arc.network", {
-        retryCount: 3,
-        retryDelay: 1000,
-        timeout: 15_000,
-      }),
-    });
+    const publicClient = publicArcClient;
 
     const walletClient = createWalletClient({
       account,
@@ -193,10 +121,77 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 1:1,000 Testnet Demo Scaling:
-    // Full valuation is finalUsdcAmount (in 6-decimal micro-USDC).
-    // On Arc Testnet, the native currency is USDC (18-decimal wei).
-    // Converting (finalUsdcAmount / 1000) into 18-decimal wei: (finalUsdcAmount * 10^12) / 1000 = finalUsdcAmount * 10^9.
+    // Real Aqua strategy ship (1inch Aqua semantics: maker == treasury must ship directly).
+    // Strategy bytes must EXACTLY match SkyRouteVault: abi.encode(flightId, treasury, budgetCap, bytecode).
+    // When the server key IS the treasury (default demo flow), ship + approve Aqua here.
+    // Otherwise fail loudly — the external treasury must ship + approve before settle (no mock).
+    const aquaAddress = (process.env.NEXT_PUBLIC_AQUA_CORE_ADDRESS as Address) || undefined;
+    const usdcAddress = (process.env.NEXT_PUBLIC_USDC_ADDRESS as Address) || undefined;
+    const finalBytecode = ((swapVmBytecode as Hex) || "0x010203") as Hex;
+    if (treasury.toLowerCase() === account.address.toLowerCase()) {
+      if (!aquaAddress || !usdcAddress) {
+        throw new Error(
+          "Missing NEXT_PUBLIC_AQUA_CORE_ADDRESS / NEXT_PUBLIC_USDC_ADDRESS: cannot ship Aqua strategy for treasury settlement."
+        );
+      }
+      const strategy = encodeAbiParameters(
+        [{ type: "bytes32" }, { type: "address" }, { type: "uint256" }, { type: "bytes" }],
+        [flightId, treasury, budgetCap, finalBytecode]
+      );
+      const AQUA_SHIP_ABI = [
+        {
+          type: "function",
+          name: "ship",
+          inputs: [
+            { name: "app", type: "address" },
+            { name: "strategy", type: "bytes" },
+            { name: "tokens", type: "address[]" },
+            { name: "amounts", type: "uint256[]" },
+          ],
+          outputs: [{ name: "strategyHash", type: "bytes32" }],
+          stateMutability: "nonpayable",
+        },
+      ] as const;
+      const ERC20_APPROVE_ABI = [
+        {
+          type: "function",
+          name: "approve",
+          inputs: [
+            { name: "spender", type: "address" },
+            { name: "amount", type: "uint256" },
+          ],
+          outputs: [{ name: "", type: "bool" }],
+          stateMutability: "nonpayable",
+        },
+      ] as const;
+      // Approve Aqua to pull real USDC, then ship virtual liquidity (wait for receipts:
+      // settleWheelsDown reverts unless the strategy is mined before it executes)
+      const approveHash = await walletClient.writeContract({
+        address: usdcAddress,
+        abi: ERC20_APPROVE_ABI,
+        functionName: "approve",
+        args: [aquaAddress, budgetCap],
+      });
+      await publicClient.waitForTransactionReceipt({ hash: approveHash, confirmations: 1 });
+      try {
+        const shipHash = await walletClient.writeContract({
+          address: aquaAddress,
+          abi: AQUA_SHIP_ABI,
+          functionName: "ship",
+          args: [vaultAddress, strategy, [usdcAddress], [budgetCap]],
+        });
+        await publicClient.waitForTransactionReceipt({ hash: shipHash, confirmations: 1 });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!/immutable/i.test(msg)) throw err;
+      }
+    }
+
+    // Demo scaling, documented explicitly:
+    // Full carbon valuation is finalUsdcAmount in 6-decimal micro-USDC (Arc Testnet USDC ERC-20
+    // 0x3600...0000 has 6 decimals; native gas is also USDC). settleWheelsDown pulls the FULL
+    // finalUsdcAmount via Aqua.pull (real ERC20). scaledNativeValue is an additional 1:1000
+    // native msg.value demo contribution, NOT the settlement amount itself.
     const scaledNativeValue =
       finalUsdcAmount > 0n
         ? finalUsdcAmount * 1_000_000_000n

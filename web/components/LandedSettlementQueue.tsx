@@ -41,6 +41,9 @@ export interface LandedFlightRecord {
   landedAt: string; // ISO string or relative time
   airborneSeconds: number;
   distanceKm: number;
+  /** Category-heuristic estimate flag (see /api/landed-flights estimationMethod) */
+  estimatedAirborne?: boolean;
+  estimationMethod?: string;
   estimate: LandedFlightSettlementEstimate;
   status: "PENDING" | "SETTLING" | "SETTLED";
   txHash?: string;
@@ -216,8 +219,8 @@ export default function LandedSettlementQueue({
       const shortTx =
         txHash && txHash.length >= 18
           ? `${txHash.slice(0, 10)}...${txHash.slice(-8)}`
-          : txHash || "0xVerified";
-      const gasText = data.gasUsed ? String(data.gasUsed) : "86,176";
+          : txHash || "—";
+      const gasText = data.gasUsed ? String(data.gasUsed) : "—";
 
       toast.success(`Wheels-Down Offset Settled on ArcScan!`, {
         id: toastId,
@@ -260,27 +263,27 @@ export default function LandedSettlementQueue({
   };
 
   return (
-    <div className="w-full flex flex-col gap-5 p-6 bg-[#0B0F19] rounded-3xl border border-white/10 text-white shadow-2xl font-mono">
+    <div className="w-full flex flex-col gap-5 p-6 bg-[#272e33] border border-dashed border-[#d3c6aa]/16 text-[#d3c6aa] font-mono">
       {/* ── Tier 1: Command Header (Single-line horizontal alignment) ── */}
-      <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 pb-5 border-b border-white/10 font-mono">
+      <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 pb-5 border-b border-dashed border-[#d3c6aa]/16 font-mono">
         {/* Left: Icon, Title & Live Radar Status */}
         <div className="flex items-center gap-3.5">
-          <div className="p-2.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 shrink-0">
+          <div className="p-2.5 bg-[#a7c080]/10 border border-dashed border-[#a7c080]/40 text-[#a7c080] shrink-0">
             <Plane className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center gap-2.5 flex-wrap">
-              <h2 className="text-lg font-bold text-white tracking-wide">
+              <h2 className="text-lg font-bold text-[#d3c6aa] tracking-wide font-mono uppercase">
                 Landed Aircraft Operations
               </h2>
-              <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 text-[11px] font-mono font-medium">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <div className="flex items-center gap-1.5 px-2.5 py-0.5 bg-[#a7c080]/15 border border-dashed border-[#a7c080]/40 text-[#a7c080] text-[11px] font-mono font-medium">
+                <span className="w-1.5 h-1.5 bg-[#a7c080] blink-step" />
                 <span>Live ADS-B Ground Radar</span>
               </div>
             </div>
-            <p className="text-xs text-zinc-400 font-mono mt-0.5">
+            <p className="text-xs text-[#859289] font-mono mt-0.5">
               Verified commercial arrivals on airport tarmac · EDDF · LFPG · EGLL · EHAM
-              {lastSyncTime && <span className="ml-2 text-zinc-500">· Synced {lastSyncTime}</span>}
+              {lastSyncTime && <span className="ml-2 text-[#859289]/70">· Synced {lastSyncTime}</span>}
             </p>
           </div>
         </div>
@@ -290,21 +293,21 @@ export default function LandedSettlementQueue({
           <button
             onClick={fetchLiveLanded}
             disabled={isLoadingLanded}
-            className="h-10 px-3.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 hover:text-white flex items-center gap-2 text-xs font-mono transition-colors disabled:opacity-50 cursor-pointer active:scale-[0.98]"
+            className="h-10 px-3.5 bg-[#2d353b] hover:bg-[#343f44] border border-dashed border-[#d3c6aa]/16 text-[#9daaa4] hover:text-[#d3c6aa] flex items-center gap-2 text-xs font-mono transition-colors disabled:opacity-50 cursor-pointer active:scale-[0.98]"
             title="Refresh Live Ground Radar"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isLoadingLanded ? "animate-spin text-emerald-400" : ""}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoadingLanded ? "animate-spin text-[#a7c080]" : ""}`} />
             <span>Scan Radar</span>
           </button>
 
-          <div className="h-10 px-3.5 rounded-xl bg-white/5 border border-white/10 flex items-center gap-2 font-mono text-xs">
-            <ShieldCheck className="w-4 h-4 text-purple-400 shrink-0" />
-            <span className="text-zinc-400">Cap:</span>
-            <span className="font-bold text-white tabular-nums">${activeSessionCap.toLocaleString()} USDC</span>
+          <div className="h-10 px-3.5 bg-[#2d353b] border border-dashed border-[#d3c6aa]/16 flex items-center gap-2 font-mono text-xs">
+            <ShieldCheck className="w-4 h-4 text-[#dbbc7f] shrink-0" />
+            <span className="text-[#859289]">Cap:</span>
+            <span className="font-bold text-[#d3c6aa] tabular-nums">${activeSessionCap.toLocaleString()} USDC</span>
             {onOpenSessionModal && (
               <button
                 onClick={onOpenSessionModal}
-                className="ml-1 px-1.5 py-0.5 rounded bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 hover:text-purple-200 text-[10px] font-mono border border-purple-500/40 transition-colors cursor-pointer"
+                className="ml-1 px-1.5 py-0.5 bg-[#dbbc7f]/20 hover:bg-[#dbbc7f]/30 text-[#dbbc7f] hover:text-[#dbbc7f] text-[10px] font-mono border border-dashed border-[#dbbc7f]/40 transition-colors cursor-pointer"
               >
                 Adjust
               </button>
@@ -314,7 +317,7 @@ export default function LandedSettlementQueue({
           <button
             onClick={handleBatchSettleAll}
             disabled={isBatchSettling || pendingCount === 0}
-            className="h-10 flex items-center gap-2 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed text-black font-bold text-xs font-mono transition-[transform,opacity] duration-140 active:scale-[0.98] shadow-lg shadow-emerald-500/10 cursor-pointer"
+            className="h-10 flex items-center gap-2 px-4 bg-[#a7c080] hover:bg-[#dbbc7f] disabled:opacity-40 disabled:cursor-not-allowed text-[#2d353b] font-bold text-xs font-mono transition-[transform,opacity] duration-140 active:scale-[0.98] cursor-pointer"
           >
             <Sparkles className="w-4 h-4" />
             <span>{isBatchSettling ? "Settling..." : `Batch Settle All (${pendingCount})`}</span>
@@ -325,56 +328,56 @@ export default function LandedSettlementQueue({
       {/* ── Tier 2: 3-Card Bento Metric Ribbon ── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 font-mono">
         {/* Card 1: Queue Volume */}
-        <div className="p-4 rounded-2xl bg-[#13192B]/80 border border-white/10 flex flex-col justify-between hover:border-white/20 transition-colors">
-          <div className="flex items-center justify-between text-zinc-400 text-xs">
-            <span className="text-[11px] uppercase tracking-wider font-semibold text-zinc-300">
+        <div className="p-4 bg-[#1e2528] border border-dashed border-[#d3c6aa]/16 flex flex-col justify-between hover:border-[#d3c6aa]/35 transition-colors">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-[11px] uppercase tracking-wider font-semibold text-[#9daaa4]">
               Aircraft In Queue
             </span>
-            <Plane className="w-4 h-4 text-zinc-400" />
+            <Plane className="w-4 h-4 text-[#859289]" />
           </div>
           <div className="mt-3">
-            <div className="text-2xl font-bold text-white tabular-nums tracking-tight">
-              {flights.length} <span className="text-sm font-normal text-zinc-400">Arrivals</span>
+            <div className="text-2xl font-bold text-[#d3c6aa] tabular-nums tracking-tight">
+              {flights.length} <span className="text-sm font-normal text-[#859289]">Arrivals</span>
             </div>
-            <div className="text-xs text-zinc-400 mt-1 flex items-center gap-2">
-              <span className="text-amber-400 font-medium">{pendingCount} Pending</span>
-              <span className="text-zinc-600">·</span>
-              <span className="text-emerald-400 font-medium">{settledCount} Settled</span>
+            <div className="text-xs text-[#859289] mt-1 flex items-center gap-2">
+              <span className="text-[#dbbc7f] font-medium">{pendingCount} Pending</span>
+              <span className="text-[#859289]/50">·</span>
+              <span className="text-[#a7c080] font-medium">{settledCount} Settled</span>
             </div>
           </div>
         </div>
 
         {/* Card 2: Total Pending Carbon Liability */}
-        <div className="p-4 rounded-2xl bg-[#13192B]/80 border border-white/10 flex flex-col justify-between hover:border-white/20 transition-colors">
-          <div className="flex items-center justify-between text-zinc-400 text-xs">
-            <span className="text-[11px] uppercase tracking-wider font-semibold text-zinc-300">
+        <div className="p-4 bg-[#1e2528] border border-dashed border-[#d3c6aa]/16 flex flex-col justify-between hover:border-[#a7c080]/40 transition-colors">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-[11px] uppercase tracking-wider font-semibold text-[#9daaa4]">
               Pending Carbon Liability
             </span>
-            <Leaf className="w-4 h-4 text-emerald-400" />
+            <Leaf className="w-4 h-4 text-[#a7c080]" />
           </div>
           <div className="mt-3">
-            <div className="text-2xl font-bold text-emerald-400 tabular-nums tracking-tight">
-              {totalPendingCo2Tonnes} <span className="text-sm font-normal text-emerald-400/70">t CO₂</span>
+            <div className="text-2xl font-bold text-[#a7c080] tabular-nums tracking-tight">
+              {totalPendingCo2Tonnes} <span className="text-sm font-normal text-[#a7c080]/70">t CO₂</span>
             </div>
-            <div className="text-xs text-zinc-400 mt-1">
+            <div className="text-xs text-[#859289] mt-1">
               ICAO Multi-Tier Burn Calculation
             </div>
           </div>
         </div>
 
         {/* Card 3: SwapVM Dynamic Offset Cost */}
-        <div className="p-4 rounded-2xl bg-[#13192B]/80 border border-white/10 flex flex-col justify-between hover:border-white/20 transition-colors">
-          <div className="flex items-center justify-between text-zinc-400 text-xs">
-            <span className="text-[11px] uppercase tracking-wider font-semibold text-zinc-300">
+        <div className="p-4 bg-[#1e2528] border border-dashed border-[#d3c6aa]/16 flex flex-col justify-between hover:border-[#dbbc7f]/40 transition-colors">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-[11px] uppercase tracking-wider font-semibold text-[#9daaa4]">
               SwapVM Offset Cost
             </span>
-            <Coins className="w-4 h-4 text-amber-400" />
+            <Coins className="w-4 h-4 text-[#dbbc7f]" />
           </div>
           <div className="mt-3">
-            <div className="text-2xl font-bold text-white tabular-nums tracking-tight">
-              ${totalPendingCostUSDC} <span className="text-sm font-normal text-zinc-400">USDC</span>
+            <div className="text-2xl font-bold text-[#d3c6aa] tabular-nums tracking-tight">
+              ${totalPendingCostUSDC} <span className="text-sm font-normal text-[#859289]">USDC</span>
             </div>
-            <div className="text-xs text-zinc-400 mt-1">
+            <div className="text-xs text-[#859289] mt-1">
               Sub-second Arc Testnet Settlement Ready
             </div>
           </div>
@@ -384,43 +387,43 @@ export default function LandedSettlementQueue({
       {/* ── Tier 3: Filter & Search Bar ── */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 font-mono text-xs">
         <div className="relative flex-1 max-w-md">
-          <Search className="w-3.5 h-3.5 absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
+          <Search className="w-3.5 h-3.5 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#859289] pointer-events-none" />
           <input
             type="text"
             placeholder="Search callsign, airline, destination..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-[#13192B] border border-white/10 rounded-xl pl-9 pr-3 py-2 text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 transition-colors"
+            className="w-full bg-[#1e2528] border border-dashed border-[#d3c6aa]/16 pl-9 pr-3 py-2 text-[#d3c6aa] placeholder-[#859289] focus:outline-none focus:border-[#a7c080]/50 transition-colors"
           />
         </div>
 
-        <div className="flex items-center p-1 bg-[#13192B] border border-white/10 rounded-xl self-start sm:self-auto">
+        <div className="flex items-center p-1 bg-[#1e2528] border border-dashed border-[#d3c6aa]/16 self-start sm:self-auto">
           <button
             onClick={() => setStatusFilter("ALL")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-mono transition-[transform,opacity,background-color] duration-140 cursor-pointer ${
+            className={`px-3 py-1.5 text-xs font-mono transition-[transform,opacity,background-color] duration-140 cursor-pointer ${
               statusFilter === "ALL"
-                ? "bg-white/15 text-white font-semibold shadow-sm"
-                : "text-zinc-400 hover:text-zinc-200"
+                ? "bg-[#d3c6aa] text-[#2d353b] font-semibold"
+                : "text-[#859289] hover:text-[#d3c6aa]"
             }`}
           >
             All ({flights.length})
           </button>
           <button
             onClick={() => setStatusFilter("PENDING")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-mono transition-[transform,opacity,background-color] duration-140 cursor-pointer ${
+            className={`px-3 py-1.5 text-xs font-mono transition-[transform,opacity,background-color] duration-140 cursor-pointer ${
               statusFilter === "PENDING"
-                ? "bg-amber-500/20 text-amber-300 font-semibold shadow-sm"
-                : "text-zinc-400 hover:text-zinc-200"
+                ? "bg-[#dbbc7f]/20 text-[#dbbc7f] font-semibold"
+                : "text-[#859289] hover:text-[#d3c6aa]"
             }`}
           >
             Pending ({pendingCount})
           </button>
           <button
             onClick={() => setStatusFilter("SETTLED")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-mono transition-[transform,opacity,background-color] duration-140 cursor-pointer ${
+            className={`px-3 py-1.5 text-xs font-mono transition-[transform,opacity,background-color] duration-140 cursor-pointer ${
               statusFilter === "SETTLED"
-                ? "bg-emerald-500/20 text-emerald-300 font-semibold shadow-sm"
-                : "text-zinc-400 hover:text-zinc-200"
+                ? "bg-[#a7c080]/20 text-[#a7c080] font-semibold"
+                : "text-[#859289] hover:text-[#d3c6aa]"
             }`}
           >
             Settled ({settledCount})
@@ -430,32 +433,32 @@ export default function LandedSettlementQueue({
 
       {/* ── Flight Cards Grid or Empty State ── */}
       {filteredFlights.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 px-4 rounded-2xl bg-[#141A2B]/40 border border-white/5 text-center font-mono">
+        <div className="flex flex-col items-center justify-center py-16 px-4 bg-[#1e2528]/60 border border-dashed border-[#d3c6aa]/[0.08] text-center font-mono">
           {isLoadingLanded ? (
             <div className="flex flex-col items-center gap-3">
-              <div className="w-8 h-8 rounded-full border-2 border-emerald-500/30 border-t-emerald-400 animate-spin" />
-              <div className="text-sm font-semibold text-zinc-200">
+              <div className="w-8 h-8 border-2 border-[#a7c080]/30 border-t-[#a7c080] animate-spin" />
+              <div className="text-sm font-semibold text-[#9daaa4]">
                 Scanning Airport Surface ADS-B Receivers...
               </div>
-              <div className="text-xs text-zinc-500">
+              <div className="text-xs text-[#859289]">
                 Querying live wheels-down aircraft at Frankfurt (EDDF), Paris (LFPG), London (EGLL)
               </div>
             </div>
           ) : statusFilter === "SETTLED" ? (
             <div className="flex flex-col items-center gap-2 max-w-sm">
-              <div className="w-10 h-10 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 mb-1">
+              <div className="w-10 h-10 bg-[#a7c080]/10 border border-dashed border-[#a7c080]/30 flex items-center justify-center text-[#a7c080] mb-1">
                 <CheckCircle2 className="w-5 h-5" />
               </div>
-              <div className="text-sm font-semibold text-zinc-200">
+              <div className="text-sm font-semibold text-[#9daaa4]">
                 No Settled Aircraft Yet
               </div>
-              <div className="text-xs text-zinc-500 leading-relaxed">
+              <div className="text-xs text-[#859289] leading-relaxed">
                 When you settle aircraft from the pending queue, their verified ArcScan transaction receipts will be archived and displayed here.
               </div>
               {pendingCount > 0 && (
                 <button
                   onClick={() => setStatusFilter("PENDING")}
-                  className="mt-3 px-3.5 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-xs cursor-pointer transition-colors"
+                  className="mt-3 px-3.5 py-1.5 bg-[#a7c080]/20 hover:bg-[#a7c080]/30 text-[#a7c080] border border-dashed border-[#a7c080]/40 text-xs cursor-pointer transition-colors font-mono"
                 >
                   View Pending Queue ({pendingCount})
                 </button>
@@ -463,34 +466,34 @@ export default function LandedSettlementQueue({
             </div>
           ) : statusFilter === "PENDING" && flights.length > 0 ? (
             <div className="flex flex-col items-center gap-2 max-w-sm">
-              <div className="w-10 h-10 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 mb-1">
+              <div className="w-10 h-10 bg-[#a7c080]/10 border border-dashed border-[#a7c080]/30 flex items-center justify-center text-[#a7c080] mb-1">
                 <CheckCircle2 className="w-5 h-5" />
               </div>
-              <div className="text-sm font-semibold text-zinc-200">
+              <div className="text-sm font-semibold text-[#9daaa4]">
                 All Landed Aircraft Settled!
               </div>
-              <div className="text-xs text-zinc-500 leading-relaxed">
+              <div className="text-xs text-[#859289] leading-relaxed">
                 Every arrival in the surface queue has been verified and retired on Arc Testnet.
               </div>
               <button
                 onClick={() => setStatusFilter("SETTLED")}
-                className="mt-3 px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-xs text-white cursor-pointer transition-colors"
+                className="mt-3 px-3.5 py-1.5 bg-[#d3c6aa]/10 hover:bg-[#d3c6aa]/20 text-xs text-[#d3c6aa] cursor-pointer transition-colors font-mono border border-dashed border-[#d3c6aa]/16"
               >
                 View Settled Receipts ({settledCount})
               </button>
             </div>
           ) : (
             <div className="flex flex-col items-center gap-2">
-              <Plane className="w-8 h-8 text-zinc-600 mb-1" />
-              <div className="text-sm font-semibold text-zinc-300">
+              <Plane className="w-8 h-8 text-[#859289]/60 mb-1" />
+              <div className="text-sm font-semibold text-[#9daaa4]">
                 No Landed Aircraft Matching Filter
               </div>
-              <div className="text-xs text-zinc-500">
+              <div className="text-xs text-[#859289]">
                 Click scan to poll active airport ground transponders across European hubs
               </div>
               <button
                 onClick={fetchLiveLanded}
-                className="mt-3 px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-xs text-white cursor-pointer transition-colors"
+                className="mt-3 px-3.5 py-1.5 bg-[#d3c6aa]/10 hover:bg-[#d3c6aa]/20 text-xs text-[#d3c6aa] cursor-pointer transition-colors font-mono border border-dashed border-[#d3c6aa]/16"
               >
                 Scan Surface Radar
               </button>
@@ -507,42 +510,42 @@ export default function LandedSettlementQueue({
           return (
             <div
               key={flight.id}
-              className={`flex flex-col justify-between p-5 rounded-2xl border transition-[transform,opacity] duration-140 ${
+              className={`flex flex-col justify-between p-5 border transition-[transform,opacity] duration-140 ${
                 isSettled
-                  ? "bg-[#111726]/70 border-emerald-500/30"
+                  ? "bg-[#1e2528]/70 border-dashed border-[#a7c080]/40"
                   : isSettling
-                  ? "bg-[#171D2F] border-amber-500/50"
-                  : "bg-[#141A2B] border-white/10 hover:border-white/20"
+                  ? "bg-[#1e2528] border-dashed border-[#dbbc7f]/50"
+                  : "bg-[#1e2528] border-dashed border-[#d3c6aa]/16 hover:border-[#d3c6aa]/35"
               }`}
             >
               <div>
                 {/* Header */}
-                <div className="flex items-start justify-between pb-3 border-b border-white/10 font-mono">
+                <div className="flex items-start justify-between pb-3 border-b border-dashed border-[#d3c6aa]/16 font-mono">
                   <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-xl bg-white/5 border border-white/10 text-emerald-400">
+                    <div className="p-2 bg-[#d3c6aa]/5 border border-dashed border-[#d3c6aa]/16 text-[#a7c080]">
                       <Plane className="w-5 h-5" />
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="text-lg font-bold text-white tracking-wider">
+                        <span className="text-lg font-bold text-[#d3c6aa] tracking-wider">
                           {flight.callsign}
                         </span>
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-zinc-300">
+                        <span className="text-[10px] px-2 py-0.5 bg-[#d3c6aa]/10 text-[#9daaa4]">
                           {flight.airframe.model}
                         </span>
                       </div>
-                      <div className="text-xs text-zinc-400">{flight.operator}</div>
+                      <div className="text-xs text-[#859289]">{flight.operator}</div>
                     </div>
                   </div>
 
                   {/* Status Indicator */}
                   <div
-                    className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                    className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border-dashed ${
                       isSettled
-                        ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-300"
+                        ? "bg-[#a7c080]/20 border-[#a7c080]/50 text-[#a7c080]"
                         : isSettling
-                        ? "bg-amber-500/20 border-amber-500/50 text-amber-300 animate-pulse"
-                        : "bg-amber-500/15 border-amber-500/30 text-amber-400"
+                        ? "bg-[#dbbc7f]/20 border-[#dbbc7f]/50 text-[#dbbc7f] blink-step"
+                        : "bg-[#dbbc7f]/15 border-[#dbbc7f]/30 text-[#dbbc7f]"
                     }`}
                   >
                     {flight.status}
@@ -551,58 +554,58 @@ export default function LandedSettlementQueue({
 
                 {/* Route & Touchdown Time */}
                 <div className="grid grid-cols-2 gap-2 my-3 font-mono text-xs">
-                  <div className="bg-black/30 p-2.5 rounded-xl border border-white/5">
-                    <span className="text-[10px] text-zinc-400 uppercase">Route</span>
-                    <div className="text-zinc-200 font-semibold truncate mt-0.5">
+                  <div className="bg-[#2d353b]/60 p-2.5 border border-dashed border-[#d3c6aa]/[0.08]">
+                    <span className="text-[10px] text-[#859289] uppercase">Route</span>
+                    <div className="text-[#d3c6aa] font-semibold truncate mt-0.5">
                       {flight.origin} → {flight.destination}
                     </div>
-                    <div className="text-[10px] text-zinc-500 mt-0.5">
+                    <div className="text-[10px] text-[#859289] mt-0.5">
                       {flight.distanceKm.toLocaleString()} km • {Math.round(flight.airborneSeconds / 3600)}h {(flight.airborneSeconds % 3600) / 60}m airborne
                     </div>
                   </div>
 
-                  <div className="bg-black/30 p-2.5 rounded-xl border border-white/5">
-                    <span className="text-[10px] text-zinc-400 uppercase">Touchdown</span>
-                    <div className="text-zinc-200 font-semibold mt-0.5">
+                  <div className="bg-[#2d353b]/60 p-2.5 border border-dashed border-[#d3c6aa]/[0.08]">
+                    <span className="text-[10px] text-[#859289] uppercase">Touchdown</span>
+                    <div className="text-[#d3c6aa] font-semibold mt-0.5">
                       {flight.landedAt}
                     </div>
-                    <div className="text-[10px] text-amber-400/80 mt-0.5">
+                    <div className="text-[10px] text-[#dbbc7f]/80 mt-0.5">
                       Status: Wheels Down & Parked
                     </div>
                   </div>
                 </div>
 
                 {/* ICAO Emissions & SwapVM Valuation */}
-                <div className="p-3 rounded-xl bg-black/40 border border-white/5 flex flex-col gap-1.5 font-mono text-xs mb-4">
+                <div className="p-3 bg-[#2d353b]/80 border border-dashed border-[#d3c6aa]/[0.08] flex flex-col gap-1.5 font-mono text-xs mb-4">
                   <div className="flex items-center justify-between">
-                    <span className="text-zinc-400 flex items-center gap-1.5">
-                      <Flame className="w-3.5 h-3.5 text-amber-400" />
+                    <span className="text-[#859289] flex items-center gap-1.5">
+                      <Flame className="w-3.5 h-3.5 text-[#e69875]" />
                       Fuel Consumed:
                     </span>
-                    <span className="font-bold text-white tabular-nums">
+                    <span className="font-bold text-[#d3c6aa] tabular-nums">
                       {flight.estimate.totalFuelBurnKg.toLocaleString()} kg
                     </span>
                   </div>
 
                   <div className="flex items-center justify-between">
-                    <span className="text-zinc-400 flex items-center gap-1.5">
-                      <Leaf className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="text-[#859289] flex items-center gap-1.5">
+                      <Leaf className="w-3.5 h-3.5 text-[#a7c080]" />
                       Total Verified CO₂:
                     </span>
-                    <span className="font-bold text-emerald-400 tabular-nums">
+                    <span className="font-bold text-[#a7c080] tabular-nums">
                       {(flight.estimate.totalCo2Kg / 1000).toFixed(2)} tonnes{" "}
-                      <span className="text-[10px] text-zinc-400 font-normal">
+                      <span className="text-[10px] text-[#859289] font-normal">
                         ({flight.estimate.totalCo2Kg.toLocaleString()} kg)
                       </span>
                     </span>
                   </div>
 
-                  <div className="flex items-center justify-between pt-1.5 border-t border-white/10">
-                    <span className="text-zinc-300 flex items-center gap-1.5">
-                      <Coins className="w-3.5 h-3.5 text-amber-400" />
+                  <div className="flex items-center justify-between pt-1.5 border-t border-dashed border-[#d3c6aa]/16">
+                    <span className="text-[#9daaa4] flex items-center gap-1.5">
+                      <Coins className="w-3.5 h-3.5 text-[#dbbc7f]" />
                       SwapVM Dynamic Quote:
                     </span>
-                    <span className="font-bold text-white text-sm tabular-nums">
+                    <span className="font-bold text-[#d3c6aa] text-sm tabular-nums">
                       ${flight.estimate.usdcCost.toFixed(2)} USDC
                     </span>
                   </div>
@@ -612,8 +615,8 @@ export default function LandedSettlementQueue({
               {/* Action Buttons / Explorer Receipt */}
               <div className="font-mono">
                 {isSettled ? (
-                  <div className="flex items-center justify-between p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-xs">
-                    <div className="flex items-center gap-2 text-emerald-400">
+                  <div className="flex items-center justify-between p-3 bg-[#a7c080]/[0.08] border border-dashed border-[#a7c080]/30 text-xs">
+                    <div className="flex items-center gap-2 text-[#a7c080]">
                       <CheckCircle2 className="w-4 h-4 shrink-0" />
                       <span className="font-semibold">
                         Settled On-Chain {flight.settledAt ? `(${flight.settledAt})` : ""}
@@ -624,7 +627,7 @@ export default function LandedSettlementQueue({
                         href={flight.explorerUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="flex items-center gap-1.5 text-emerald-300 hover:text-white underline"
+                        className="flex items-center gap-1.5 text-[#a7c080] hover:text-[#d3c6aa] underline"
                       >
                         <span>ArcScan Tx</span>
                         <ExternalLink className="w-3.5 h-3.5" />
@@ -634,15 +637,15 @@ export default function LandedSettlementQueue({
                 ) : (
                   <>
                     {flight.estimate.usdcCost > activeSessionCap && (
-                      <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] mb-2 font-mono">
+                      <div className="flex items-center justify-between px-3 py-1.5 bg-[#dbbc7f]/10 border border-dashed border-[#dbbc7f]/30 text-[#dbbc7f] text-[11px] mb-2 font-mono">
                         <div className="flex items-center gap-1.5">
-                          <ShieldCheck className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                          <ShieldCheck className="w-3.5 h-3.5 text-[#dbbc7f] shrink-0" />
                           <span>Exceeds cap (${activeSessionCap.toLocaleString()} USDC)</span>
                         </div>
                         {onOpenSessionModal && (
                           <button
                             onClick={onOpenSessionModal}
-                            className="underline hover:text-white font-semibold text-amber-200 cursor-pointer text-[10px]"
+                            className="underline hover:text-[#d3c6aa] font-semibold text-[#dbbc7f] cursor-pointer text-[10px]"
                           >
                             Increase Cap →
                           </button>
@@ -652,7 +655,7 @@ export default function LandedSettlementQueue({
                     <button
                       onClick={() => handleSettleFlight(flight)}
                       disabled={isSettling}
-                      className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-black font-bold text-xs transition-[transform,opacity] duration-140 active:scale-[0.98] shadow-lg cursor-pointer"
+                      className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-[#a7c080] hover:bg-[#dbbc7f] disabled:opacity-50 text-[#2d353b] font-bold text-xs transition-[transform,opacity] duration-140 active:scale-[0.98] cursor-pointer font-mono"
                     >
                       <Zap className="w-4 h-4" />
                       <span>
