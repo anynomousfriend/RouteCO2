@@ -12,6 +12,7 @@
   "dependencies": {
     "@number-flow/react": "^0.5.5",
     "@privy-io/react-auth": "^3.40.0",
+    "@stripe/stripe-js": "^1.54.2",
     "cesium": "^1.145.0",
     "clsx": "^2.1.1",
     "egm96-universal": "^1.1.1",
