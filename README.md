@@ -71,8 +71,8 @@ The global aviation industry contributes **over 1 billion tonnes of CO₂ annual
 │   │           Flight Telemetry Ingestion         │              │               Circle Agent Wallet                │      │
 │   │  - OpenSky Global ADS-B Radar (Live)         │              │  - Target allowlist: SkyRouteVault               │      │
 │   │  - Multi-tier proxy with credit governor     │              │  - Daily & per-flight spend policy guard         │      │
-│   │  - Automated "When Landed -> Settle" Trigger │─────────────►│  - Broadcasts native USDC micro-settlement via   │      │
-│   │  - Triggers Wheels-Down on:                  │              │    Circle Paymaster on Arc Testnet (5042002)     │      │
+│   │  - Automated "When Landed -> Settle" Trigger │─────────────►│  - Broadcasts native USDC settlement via         │      │
+│   │  - Triggers Wheels-Down on:                  │              │    Circle Developer Wallets, Arc Testnet (5042002) │      │
 │   │      `prev.onGround == false`                │              └────────────────────────┬─────────────────────────┘      │
 │   │      `curr.onGround == true`                 │                                       │                                │
 │   └──────────────────────────────────────────────┘                                       │                                │
@@ -87,7 +87,7 @@ The global aviation industry contributes **over 1 billion tonnes of CO₂ annual
 │   │           1inch Aqua Core Registry           │              │             SwapVM Execution Router              │      │
 │   │  - Zero-Custody: Airline USDC stays in wallet│              │  - Runs compiled fuel-efficiency bytecode        │      │
 │   │  - Virtual TVU: Backs flight manifest offsets│◄────────────►│  - Enforces cruise-discount & climb-rate math    │      │
-│   │  - Calls `aqua.pull()` & `aqua.push()`       │              │  - Atomic settlement without fund lockup         │      │
+│   │  - Calls `aqua.pull()` (real USDC) & retires    │              │  - Atomic settlement without fund lockup         │      │
 │   └──────────────────────────────────────────────┘              └──────────────────────────────────────────────────┘      │
 └───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -98,32 +98,32 @@ The global aviation industry contributes **over 1 billion tonnes of CO₂ annual
 
 ### 🦄 Track 1: 1inch — Build an Aqua App
 * **Zero-Custody Shared TVU (`AquaCore.sol` & `IAqua.sol`)**:
-  Airline treasury funds remain in the airline's self-custodied wallet until transponders confirm touchdown. Capital is never locked in escrow contracts or custody pools. Airline USDC is virtually quoted across flight manifests via `aqua.ship()`.
+  Airline treasury funds remain in the airline's self-custodied wallet until transponders confirm touchdown. Capital is never locked in escrow contracts or custody pools. The interface matches the real 1inch Aqua protocol (`ship` / `dock` / `pull` / `push` / `rawBalances` / `safeBalances`): the treasury ships its own immutable strategy via `aqua.ship()` (Aqua maker is always the shipper), and settlement pulls real USDC via `aqua.pull()` (`transferFrom` treasury → vault, requiring treasury approval to Aqua).
 * **SwapVM Flight Fuel Curve Engine (`SwapVMRuleEngine.sol`)**:
-  Flight profiles are compiled into SwapVM bytecode opcodes executed on-chain:
-  * `0x01` (`OP_DYNAMIC_BALANCES`): Base fuel burn balance allocation from airframe benchmark.
+  Flight profiles are compiled into SwapVM bytecode opcodes executed on-chain (Arc-local compact projection of the canonical `1inch/swap-vm` program model — the canonical router `0x111111338c5091E8440b67B168bAe16a668AC0De` is not deployed on Arc, so Arc evaluates the equivalent curve locally):
+  * `0x01` (`OP_DYNAMIC_BALANCES`): Base fuel burn balance allocation from airframe benchmark (≡ `_dynamicBalancesXD`).
   * `0x02` (`OP_PIECEWISE_LINEAR_SCALE`): Cruise altitude discount down to $0.80\times$ factor when altitude $>9,000\text{ m}$; climb thrust penalty up to $1.35\text{--}1.50\times$ factor when climb rate $>2\text{ m/s}$.
-  * `0x03` (`OP_FLAT_FEE_AMOUNT_IN`): Certified carbon offset valuation at $\$25.00\text{ USDC} / \text{tonne CO}_2$.
-  * `0x04` (`OP_DECAY`): Waypoint / descent decay opcode.
-* **Atomic Pull & Push**:
-  On touchdown, `SkyRouteVault` executes atomic settlement via `aqua.pull(treasury, usdcAmount)` and `aqua.push(treasury, carbonCredits)` in a single transaction.
+  * `0x03` (`OP_FLAT_FEE_AMOUNT_IN`): Certified carbon offset valuation at $\$25.00\text{ USDC} / \text{tonne CO}_2$ (≡ `_flatFeeAmountInXD`).
+  * `0x04` (`OP_DECAY`): Waypoint / descent decay opcode (≡ `_decayXD`).
+* **Atomic Pull & Retire**:
+  On touchdown, `SkyRouteVault` pulls real USDC via `aqua.pull(treasury, strategyHash, usdc, usdcAmount, vault)` in the settlement transaction and retires carbon in the on-ledger accumulator. Carbon retirement is on-chain accounting (`totalCarbonOffsetKg`) plus receipt events, not an ERC20 transfer.
 
 ### 🔵 Track 2: Arc / Circle — Best Agentic Economy with Circle Agent Stack
 * **Autonomous Flight Dispatcher Daemon**:
-  Operates as an autonomous Circle Agent Wallet (`agent/src/circle-wallet.ts`) with cryptographic policy guards: target contract whitelisting (`SkyRouteVault`), daily spend caps, and per-flight budget thresholds.
+  Operates as an autonomous Circle Agent Wallet (`agent/src/circle-wallet.ts`) with cryptographic policy guards: target contract whitelisting (`SkyRouteVault`), daily spend caps, and per-flight budget thresholds. SCA wallets are Gas Station gasless-capable.
 * **Sub-Second Finality & Native USDC Gas**:
-  Settles flight manifest registrations and wheels-down offsets natively in USDC on Arc Testnet (Chain ID `5042002`), eliminating multi-token conversion friction.
-* **Programmable Circle Paymaster (100% Gasless Flight Ops)**:
-  Airlines interact without holding or managing gas tokens; all network fees are sponsored via the paymaster.
+  Settles flight manifest registrations and wheels-down offsets natively in USDC on Arc Testnet (Chain ID `5042002`), eliminating multi-token conversion friction. Arc Testnet USDC: `0x3600000000000000000000000000000000000000`.
+* **Circle Developer-Controlled Wallets + Gas Station (`agent/src/circle-developer-client.ts`)**:
+  Real `@circle-fin/developer-controlled-wallets` integration: wallet sets, `ARC-TESTNET` SCA wallets, SDK transfers with terminal-state polling. Testnet Gas Station policy sponsors qualifying SCA transactions; Circle Paymaster addresses documented for user-pays-USDC ERC-4337 flows.
 * **Automated Touchdown Settlement Broadcaster (`agent/src/arc-settler.ts`)**:
   Autonomously monitors transponder states and submits verifiable transactions to Arc Testnet.
 
 ### 🛡️ Track 3: Privy — Seamless Onboarding & Scoped Session Keys
 * **Corporate Flight Dispatcher Onboarding**:
   Dispatchers log in via `@privy-io/react-auth` in $<3$ seconds using Passkeys/FaceID with embedded smart wallets.
-* **Scoped Flight Manifest Session Keys (`web/components/SessionDelegationModal.tsx`)**:
-  Dispatcher grants a bounded session delegation key:
-  * *Contract Whitelist*: Strictly restricted to `SkyRouteVault` (`0xb579e26C81FDf858a9A6a0F3CcAB497a70343c5d`).
+* **Scoped Flight Manifest Session Keys (`web/components/SessionDelegationModal.tsx`, `web/lib/privy-signers.ts`)**:
+  Dispatcher grants a bounded session delegation key via real Privy `addSigners` (key quorum + dashboard policy):
+  * *Contract Whitelist*: Strictly restricted to `SkyRouteVault` (`0x469CA8E59ae25CBEEC2eA52617163E2396B9bdA1`), AquaCore, and Arc USDC.
   * *Flight Budget Cap*: Configurable max budget (default \$500 USDC).
   * *Time-Bounded Expiry*: Auto-expires after 8 hours.
   * *1-Click Emergency Abort*: Immediately revokes all agent delegation.
@@ -185,12 +185,16 @@ All smart contracts are deployed to **Arc Testnet (Chain ID `5042002`)** and ver
 
 | Contract / Method | Deployed Address / Tx Hash | ArcScan Explorer Verification |
 |---|---|---|
-| **SkyRouteVault** (Core App) | `0xb579e26C81FDf858a9A6a0F3CcAB497a70343c5d` | [View on ArcScan](https://testnet.arcscan.app/address/0xb579e26C81FDf858a9A6a0F3CcAB497a70343c5d) |
-| **SwapVMRuleEngine** (Flight Curve) | `0xB868CC7d8a6E883f96Ff481789bf2C66afc0356d` | [View on ArcScan](https://testnet.arcscan.app/address/0xB868CC7d8a6E883f96Ff481789bf2C66afc0356d) |
-| **AquaCore** (Shared TVU) | `0xdF020AedA9726EE4085cbD611AdeC830C6569464` | [View on ArcScan](https://testnet.arcscan.app/address/0xdF020AedA9726EE4085cbD611AdeC830C6569464) |
-| **setAuthorizedAgent** | `0xdd7c6f40ce4dad8c2c7d209c558756a0f5208b0df52ded9a9fdf4ffb06618742` | [View Tx](https://testnet.arcscan.app/tx/0xdd7c6f40ce4dad8c2c7d209c558756a0f5208b0df52ded9a9fdf4ffb06618742) |
-| **registerFlightManifest** (LH502) | `0xfcd170c67b41f5c6f32c3f059f83d3fe7aeaebd6904d8dcc5cdbb54dc21d1b71` | [View Tx](https://testnet.arcscan.app/tx/0xfcd170c67b41f5c6f32c3f059f83d3fe7aeaebd6904d8dcc5cdbb54dc21d1b71) |
-| **settleWheelsDown** (5,846 kg CO₂) | `0x734c07ed79f0ebc81f88c2c8b3b5bfeeb90e5ddfc61ff979f131f477bd2bc90d` | [View Tx](https://testnet.arcscan.app/tx/0x734c07ed79f0ebc81f88c2c8b3b5bfeeb90e5ddfc61ff979f131f477bd2bc90d) |
+| **SkyRouteVault** (Core App) | `0x469CA8E59ae25CBEEC2eA52617163E2396B9bdA1` | [View on ArcScan](https://testnet.arcscan.app/address/0x469CA8E59ae25CBEEC2eA52617163E2396B9bdA1) |
+| **SwapVMRuleEngine** (Flight Curve) | `0x6a4b3C76a5e2Cf1C2d69F05537C5c9Cb8f843D30` | [View on ArcScan](https://testnet.arcscan.app/address/0x6a4b3C76a5e2Cf1C2d69F05537C5c9Cb8f843D30) |
+| **AquaCore** (Shared TVU) | `0xE3Ec9dEb24fF3AD05cF0324b77DA128078780535` | [View on ArcScan](https://testnet.arcscan.app/address/0xE3Ec9dEb24fF3AD05cF0324b77DA128078780535) |
+| **Arc Testnet USDC** (ERC-20) | `0x3600000000000000000000000000000000000000` | [View on ArcScan](https://testnet.arcscan.app/address/0x3600000000000000000000000000000000000000) |
+| **setAuthorizedAgent** | `0x3bf34932aaa2747ab2329cd64f0175e64328e19949e795b6311188483f1e17e8` | [View Tx](https://testnet.arcscan.app/tx/0x3bf34932aaa2747ab2329cd64f0175e64328e19949e795b6311188483f1e17e8) |
+| **registerFlightManifest** (LH414) | `0xc485728df0bf5ba0560a1ec66be8a1f5aa3ba044c55d9360bb22b5cf2f43b9c6` | [View Tx](https://testnet.arcscan.app/tx/0xc485728df0bf5ba0560a1ec66be8a1f5aa3ba044c55d9360bb22b5cf2f43b9c6) |
+| **settleWheelsDown** (126 kg CO₂, $3.15 real USDC pull) | `0x2ed8e3cb8c41f6cc5b67a3803544a26bdb224318a9b6ea853b201bd4af6655f5` | [View Tx](https://testnet.arcscan.app/tx/0x2ed8e3cb8c41f6cc5b67a3803544a26bdb224318a9b6ea853b201bd4af6655f5) |
+| **UI route settle** (RDY100, block 61386097) | `0xac86375297f7d7ab9a42d96fdf589a92e7d086b02fe8e999e5fd0cb97f2bef0a` | [View Tx](https://testnet.arcscan.app/tx/0xac86375297f7d7ab9a42d96fdf589a92e7d086b02fe8e999e5fd0cb97f2bef0a) |
+| **Circle fund Circle wallet** (1 USDC) | `0x47f1c306f78a7667fbbdae57fd3f07247d17ef41c92dc885e389f5a76b1423dd` | [View Tx](https://testnet.arcscan.app/tx/0x47f1c306f78a7667fbbdae57fd3f07247d17ef41c92dc885e389f5a76b1423dd) |
+| **Circle SDK transfer** (0.1 USDC, COMPLETE) | `0x524969b1da269b5a7d3de072c0ebe1f355431a43d3e451325adf4211f13f1072` | [View Tx](https://testnet.arcscan.app/tx/0x524969b1da269b5a7d3de072c0ebe1f355431a43d3e451325adf4211f13f1072) |
 
 ### Direct On-Chain Carbon Credit Accumulator
 Every flight reconciliation increments the airline treasury's certified retired carbon credits directly in storage:
@@ -209,24 +213,25 @@ RouteCO2/
 │   ├── src/
 │   │   ├── SkyRouteVault.sol   # 1inch Aqua App callback contract hooking into SwapVM
 │   │   ├── SwapVMRuleEngine.sol# SwapVM flight curve interpreter (Opcodes: 0x01, 0x02, 0x03, 0x04)
-│   │   ├── AquaCore.sol        # 1inch Aqua zero-custody shared liquidity registry
+│   │   ├── AquaCore.sol        # 1inch Aqua shared liquidity registry (real ship/dock/pull/push)
 │   │   └── interfaces/
-│   │       ├── IAqua.sol       # 1inch Aqua core interface (ship, pull, push, virtualBalances)
+│   │       ├── IAqua.sol       # 1inch Aqua core interface (ship, dock, pull, push, balances)
 │   │       ├── ISkyRouteVault.sol
 │   │       └── ISwapVMRuleEngine.sol
 │   └── test/
-│       ├── SkyRouteVault.t.sol # Live RPC fork integration tests (18 tests passing)
-│       └── SwapVMRuleEngine.t.sol # Opcode evaluations & curve bounds (11 tests passing)
+│       ├── SkyRouteVault.t.sol # Real USDC pull + Aqua accounting tests (22 passing)
+│       └── SwapVMRuleEngine.t.sol # Opcode evaluations & curve bounds (7 passing)
 │
 ├── agent/                      # Autonomous Flight Dispatcher (Circle Agent Stack)
 │   ├── src/
 │   │   ├── dispatcher.ts       # OpenSky ADS-B poller & flight monitor loop
 │   │   ├── icao-engine.ts      # Aviation fuel burn & CO2 emissions calculator
 │   │   ├── circle-wallet.ts    # Circle Developer-Controlled Wallet policy guards
+│   │   ├── circle-developer-client.ts # Real Circle SDK: wallet sets, ARC-TESTNET transfers
 │   │   ├── swapvm-compiler.ts  # Compiles dynamic flight curve to SwapVM bytecode
-│   │   ├── arc-settler.ts      # Native USDC micropayments via Circle Paymaster
+│   │   ├── arc-settler.ts      # Native USDC settlements on Arc Testnet
 │   │   └── verify-live-settlement.ts # Real end-to-end Arc Testnet verification runner
-│   └── test/                   # Vitest live test suite (65/65 passing)
+│   └── test/                   # Vitest live test suite (68/68 passing, 8 suites)
 │
 ├── web/                        # Next.js 15 Flight Operations Command Center
 │   ├── app/
@@ -280,7 +285,7 @@ npm install
 npm test
 npm run build
 ```
-*All 65/65 tests pass across 7 test suites.*
+*All 68/68 tests pass across 8 test suites.*
 
 ### 3. Web Operations Console (Next.js 15)
 ```bash
@@ -288,7 +293,7 @@ cd web
 npm install
 npm run dev
 ```
-Open `http://localhost:3000` to launch the Flight Operations Console.
+Open `http://localhost:3000` for the landing page and `http://localhost:3000/app` for the Flight Operations Console.
 
 ---
 
