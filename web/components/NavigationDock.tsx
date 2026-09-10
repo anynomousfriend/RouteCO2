@@ -10,6 +10,7 @@ import {
   Menu,
   KeyRound,
   Clock,
+  FlaskConical,
 } from "lucide-react";
 
 interface NavigationDockProps {
@@ -18,6 +19,8 @@ interface NavigationDockProps {
   onOpenAudit: () => void;
   onOpenAqua: () => void;
   onOpenSession: () => void;
+  onOpenByok?: () => void;
+  byokActive?: boolean;
   onConnectWallet: () => void;
   isWalletConnected: boolean;
   walletAddress?: string;
@@ -34,6 +37,8 @@ export function NavigationDock({
   onOpenAqua,
   onOpenSession,
   onConnectWallet,
+  onOpenByok,
+  byokActive = false,
   isWalletConnected,
   walletAddress,
   treasuryBalance,
@@ -47,6 +52,9 @@ export function NavigationDock({
     { id: "landed", icon: Clock, label: "Landed (Pending Settlement)", badge: landedPendingCount },
     { id: "aqua", icon: Layers, label: "1inch Aqua Shared TVU", action: onOpenAqua },
     { id: "certificates", icon: ShieldCheck, label: "Audit Certificates", action: onOpenAudit },
+    ...(onOpenByok
+      ? [{ id: "byok", icon: FlaskConical, label: byokActive ? "BYOK Active — Test With Your Key" : "Test It Yourself (BYOK)", action: onOpenByok }]
+      : []),
   ];
 
   const shortAddress = walletAddress
@@ -82,6 +90,8 @@ export function NavigationDock({
               className={`group relative w-10 h-10 flex items-center justify-center transition-[transform,colors] duration-140 cursor-pointer active:scale-[0.92] ${
                 isActive
                   ? "bg-[#a7c080] text-[#2d353b]"
+                  : item.id === "byok" && byokActive
+                  ? "bg-[#7fbbb3]/20 text-[#7fbbb3] border border-dashed border-[#7fbbb3]/50"
                   : "text-[#859289] hover:text-[#d3c6aa] hover:bg-[#d3c6aa]/[0.06]"
               }`}
             >
