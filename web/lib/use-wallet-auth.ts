@@ -38,10 +38,28 @@ export function useWalletAuth(): WalletAuthState {
     };
   }
 
-  // Real Privy provider hook
-  const privy = usePrivy();
-  return {
-    ...privy,
-    isConfigured: true,
-  };
+  // Real Privy provider hook. Guarded: if the provider failed to mount
+  // (bad env at runtime, network-blocked auth iframe), degrade to the
+  // unconfigured fallback instead of crashing the route.
+  try {
+    const privy = usePrivy();
+    return {
+      ...privy,
+      isConfigured: true,
+    };
+  } catch {
+    console.warn("[Privy] usePrivy unavailable (provider not mounted); using fallback auth state.");
+    return {
+      ready: true,
+      authenticated: false,
+      user: null,
+      isConfigured: false,
+      login: () => {
+        toast.error("Wallet Unavailable", {
+          description: "Privy failed to initialize in this environment. Check the app configuration and reload.",
+        });
+      },
+      logout: () => {},
+    };
+  }
 }

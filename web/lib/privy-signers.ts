@@ -29,8 +29,30 @@ export interface SessionDelegationResult {
 }
 
 export function useFlightSessionDelegation(): SessionDelegationResult {
-  const { addSigners } = useSigners();
-  const { delegateWallet } = useHeadlessDelegatedActions();
+  // These hooks throw when no PrivyProvider is mounted (e.g. production env
+  // without NEXT_PUBLIC_PRIVY_APP_ID). Call them unconditionally to preserve
+  // hook order, but fall back to stubs so the route survives unconfigured env.
+  // addSessionSigner re-checks isSessionSignerConfigured and throws a helpful
+  // error before the stubs could ever be invoked.
+  let addSigners: (args: {
+    address: string;
+    signers: { signerId: string; policyIds: string[] }[];
+  }) => Promise<unknown>;
+  let delegateWallet: (args: { address: string; chainType: "ethereum" }) => Promise<unknown>;
+  try {
+    addSigners = useSigners().addSigners;
+  } catch {
+    addSigners = async () => {
+      throw new Error("Privy session signers unavailable: provider not mounted.");
+    };
+  }
+  try {
+    delegateWallet = useHeadlessDelegatedActions().delegateWallet;
+  } catch {
+    delegateWallet = async () => {
+      throw new Error("Privy delegation unavailable: provider not mounted.");
+    };
+  }
   const [delegated, setDelegated] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
