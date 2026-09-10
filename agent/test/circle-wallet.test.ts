@@ -11,7 +11,7 @@ describe("Circle Agent Wallet & Policy Guards (AGENT.md Track 2)", () => {
     "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
   // Address corresponding to samplePrivateKey (Foundry dev #0)
   const expectedAddress: Address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
-  const sampleVault: Address = "0x469CA8E59ae25CBEEC2eA52617163E2396B9bdA1";
+  const sampleVault: Address = "0xe6bbB15BA58E46Cd02Cfa4B842A9e3Dc3a66b57F";
   const unauthorizedVault: Address = "0x9999999999999999999999999999999999999999";
 
   let wallet: CircleAgentWallet;

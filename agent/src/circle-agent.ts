@@ -63,6 +63,7 @@ export const SKYROUTE_VAULT_ABI = [
       { name: "maxBudgetUSDC", type: "uint256" },
       { name: "swapVmBytecode", type: "bytes" },
       { name: "strategyHash", type: "bytes32" },
+      { name: "registrar", type: "address" },
       { name: "settled", type: "bool" },
     ],
     stateMutability: "view",

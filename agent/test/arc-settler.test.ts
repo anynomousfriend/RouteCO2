@@ -12,7 +12,7 @@ import { compileSwapVMCurve } from "../src/swapvm-compiler.js";
 describe("Arc Testnet On-Chain Settler (Chain ID 5042002)", () => {
   const samplePrivateKey: Hex =
     "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
-  const sampleVault: Address = "0x469CA8E59ae25CBEEC2eA52617163E2396B9bdA1";
+  const sampleVault: Address = "0xe6bbB15BA58E46Cd02Cfa4B842A9e3Dc3a66b57F";
   const sampleTreasury: Address = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
   const sampleFlightId: Hex =
     "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890";

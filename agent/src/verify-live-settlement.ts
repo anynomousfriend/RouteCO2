@@ -23,7 +23,7 @@ async function main() {
   const privateKey: Hex = rawKey.startsWith("0x") ? (rawKey as Hex) : (`0x${rawKey}` as Hex);
   const vaultAddress: Address =
     (process.env.NEXT_PUBLIC_ARC_VAULT_ADDRESS as Address) ||
-    "0x469CA8E59ae25CBEEC2eA52617163E2396B9bdA1";
+    "0xe6bbB15BA58E46Cd02Cfa4B842A9e3Dc3a66b57F";
 
   console.log("==================================================================");
   console.log("       ROUTECO2 LIVE ARC TESTNET END-TO-END VERIFIER              ");
