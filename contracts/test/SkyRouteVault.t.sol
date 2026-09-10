@@ -132,6 +132,7 @@ contract SkyRouteVaultTest is Test {
             uint256 maxBudgetUSDC,
             bytes memory swapVmBytecode,
             bytes32 strategyHash,
+            address registrar,
             bool settled
         ) = vault.manifests(flightId);
 
@@ -141,6 +142,7 @@ contract SkyRouteVaultTest is Test {
         assertEq(maxBudgetUSDC, MAX_BUDGET);
         assertEq(swapVmBytecode, hex"010203");
         assertTrue(strategyHash != bytes32(0));
+        assertEq(registrar, address(this));
         assertFalse(settled);
 
         // Treasury ships the identical strategy directly to Aqua (real maker == treasury)
@@ -170,7 +172,7 @@ contract SkyRouteVaultTest is Test {
             VALID_BYTECODE
         );
 
-        (,,,, bytes memory swapVmBytecode, bytes32 strategyHash, bool settled) = vault.manifests(flightId);
+        (,,,, bytes memory swapVmBytecode, bytes32 strategyHash, , bool settled) = vault.manifests(flightId);
         assertEq(swapVmBytecode, VALID_BYTECODE);
         assertTrue(strategyHash != bytes32(0));
         assertFalse(settled);
@@ -240,7 +242,7 @@ contract SkyRouteVaultTest is Test {
         vault.settleWheelsDown(flightId, airborneSeconds, fuelBurnKg, co2Kg, usdcAmount);
 
         // Verify manifest marked settled
-        (,,,,, , bool settled) = vault.manifests(flightId);
+        (,,,,,, , bool settled) = vault.manifests(flightId);
         assertTrue(settled);
 
         // Verify carbon offset credits credited to treasury (on-ledger retirement)
@@ -430,6 +432,67 @@ contract SkyRouteVaultTest is Test {
         vm.prank(owner);
         vm.expectRevert("Only owner");
         vault.setAuthorizedAgent(agent, false);
+    }
+
+    function test_PermissionlessRegistrarSettlesOwnFlight() public {
+        address visitor = address(0xBEEF);
+        usdcToken.mint(visitor, 10_000e6);
+
+        // Visitor registers with treasury = self (no allowlist needed to register)
+        vm.startPrank(visitor);
+        bytes32 flightId = vault.registerFlightManifest("VIS100", "A320", visitor, 5_000_000);
+        (
+            ,
+            ,
+            ,
+            ,
+            ,
+            bytes32 strategyHash,
+            address registrar,
+            bool settledBefore
+        ) = vault.manifests(flightId);
+        assertEq(registrar, visitor);
+        assertFalse(settledBefore);
+
+        // Visitor ships + approves as treasury/maker, then settles (never allowlisted)
+        bytes memory strategy = abi.encode(flightId, visitor, 5_000_000, hex"010203");
+        assertEq(keccak256(strategy), strategyHash);
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(usdcToken);
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = 5_000_000;
+        aqua.ship(address(vault), strategy, tokens, amounts);
+        usdcToken.approve(address(aqua), type(uint256).max);
+        vault.settleWheelsDown(flightId, 900, 40, 126, 3_150_000);
+        vm.stopPrank();
+
+        (,,,,,,, bool settledAfter) = vault.manifests(flightId);
+        assertTrue(settledAfter);
+        assertEq(vault.totalCarbonOffsetKg(visitor), 126);
+        assertEq(usdcToken.balanceOf(address(vault)), 3_150_000);
+    }
+
+    function test_StrangerCannotSettleOthersFlight() public {
+        address visitor = address(0xBEEF);
+        address stranger = address(0xCAFE);
+        usdcToken.mint(visitor, 10_000e6);
+
+        vm.prank(visitor);
+        bytes32 flightId = vault.registerFlightManifest("VIS200", "A320", visitor, 5_000_000);
+        _shipTreasuryStrategy(flightId, visitor, 5_000_000, hex"010203");
+        vm.prank(visitor);
+        usdcToken.approve(address(aqua), type(uint256).max);
+
+        // Stranger is neither authorized nor registrar -> reverts
+        vm.prank(stranger);
+        vm.expectRevert("Unauthorized agent");
+        vault.settleWheelsDown(flightId, 900, 40, 126, 3_150_000);
+
+        // Owner-authorized agent path still works on the same flight
+        vm.prank(agent);
+        vault.settleWheelsDown(flightId, 900, 40, 126, 3_150_000);
+        (,,,,,,, bool settled) = vault.manifests(flightId);
+        assertTrue(settled);
     }
 
     /// @notice Ships the identical flight strategy directly from the treasury (real Aqua maker == treasury)

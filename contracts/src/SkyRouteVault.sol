@@ -27,8 +27,18 @@ contract SkyRouteVault is ISkyRouteVault {
         _;
     }
 
-    modifier onlyAgent() {
-        require(authorizedAgents[msg.sender], "Unauthorized agent");
+    /// @notice Permissionless self-serve settlement rule.
+    /// @dev The registrar that created a manifest may always settle it (they can
+    ///  only move treasury funds the treasury itself shipped + approved, and the
+    ///  USDC pull lands in the vault, never with the settler — so registrar
+    ///  settlement is self-contained and cannot grief other manifests).
+    ///  Owner-authorized Circle Agents keep settling any manifest as before.
+    modifier onlyAgentOrRegistrar(bytes32 flightId) {
+        FlightManifest storage manifest = manifests[flightId];
+        require(
+            authorizedAgents[msg.sender] || msg.sender == manifest.registrar,
+            "Unauthorized agent"
+        );
         _;
     }
 
@@ -119,6 +129,7 @@ contract SkyRouteVault is ISkyRouteVault {
             maxBudgetUSDC: maxBudgetUSDC,
             swapVmBytecode: swapVmBytecode,
             strategyHash: strategyHash,
+            registrar: msg.sender,
             settled: false
         });
 
@@ -127,14 +138,16 @@ contract SkyRouteVault is ISkyRouteVault {
     }
 
     /// @notice Settles carbon offsets upon aircraft touchdown (Wheels-Down)
-    /// @dev Pulls real USDC via Aqua (requires treasury ERC20 approval to Aqua); retires carbon on-ledger.
+    /// @dev Pulls real USDC via Aqua (requires treasury ERC20 approval to Aqua);
+    ///  retires carbon on-ledger. Callable by owner-authorized agents (any manifest)
+    ///  or by the manifest's registrar (own manifests only) — see onlyAgentOrRegistrar.
     function settleWheelsDown(
         bytes32 flightId,
         uint256 airborneSeconds,
         uint256 fuelBurnKg,
         uint256 co2Kg,
         uint256 usdcAmount
-    ) external payable override onlyAgent {
+    ) external payable override onlyAgentOrRegistrar(flightId) {
         require(fuelBurnKg > 0, "Invalid fuel burn");
         FlightManifest storage manifest = manifests[flightId];
         require(manifest.treasury != address(0), "Manifest does not exist");

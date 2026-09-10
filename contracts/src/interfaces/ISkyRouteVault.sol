@@ -15,6 +15,8 @@ interface ISkyRouteVault {
         uint256 maxBudgetUSDC;
         bytes swapVmBytecode;
         bytes32 strategyHash;
+        /// @notice Agent that registered the manifest; may settle it without allowlist.
+        address registrar;
         bool settled;
     }
 
@@ -59,6 +61,7 @@ interface ISkyRouteVault {
         uint256 maxBudgetUSDC,
         bytes memory swapVmBytecode,
         bytes32 strategyHash,
+        address registrar,
         bool settled
     );
 
