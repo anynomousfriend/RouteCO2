@@ -185,14 +185,17 @@ All smart contracts are deployed to **Arc Testnet (Chain ID `5042002`)** and ver
 
 | Contract / Method | Deployed Address / Tx Hash | ArcScan Explorer Verification |
 |---|---|---|
-| **SkyRouteVault** (Core App) | `0x469CA8E59ae25CBEEC2eA52617163E2396B9bdA1` | [View on ArcScan](https://testnet.arcscan.app/address/0x469CA8E59ae25CBEEC2eA52617163E2396B9bdA1) |
+| **SkyRouteVault** (Core App) | `0xe6bbB15BA58E46Cd02Cfa4B842A9e3Dc3a66b57F` | [View on ArcScan](https://testnet.arcscan.app/address/0xe6bbB15BA58E46Cd02Cfa4B842A9e3Dc3a66b57F) |
 | **SwapVMRuleEngine** (Flight Curve) | `0x6a4b3C76a5e2Cf1C2d69F05537C5c9Cb8f843D30` | [View on ArcScan](https://testnet.arcscan.app/address/0x6a4b3C76a5e2Cf1C2d69F05537C5c9Cb8f843D30) |
 | **AquaCore** (Shared TVU) | `0xE3Ec9dEb24fF3AD05cF0324b77DA128078780535` | [View on ArcScan](https://testnet.arcscan.app/address/0xE3Ec9dEb24fF3AD05cF0324b77DA128078780535) |
 | **Arc Testnet USDC** (ERC-20) | `0x3600000000000000000000000000000000000000` | [View on ArcScan](https://testnet.arcscan.app/address/0x3600000000000000000000000000000000000000) |
-| **setAuthorizedAgent** | `0x3bf34932aaa2747ab2329cd64f0175e64328e19949e795b6311188483f1e17e8` | [View Tx](https://testnet.arcscan.app/tx/0x3bf34932aaa2747ab2329cd64f0175e64328e19949e795b6311188483f1e17e8) |
+| **setAuthorizedAgent** | `0x972a3c051fc440faaa925c3bdf1e8fac17ee0b6d5a0cb7ac237b24ed4a1cdf3e` | [View Tx](https://testnet.arcscan.app/tx/0x972a3c051fc440faaa925c3bdf1e8fac17ee0b6d5a0cb7ac237b24ed4a1cdf3e) |
 | **registerFlightManifest** (LH414) | `0xc485728df0bf5ba0560a1ec66be8a1f5aa3ba044c55d9360bb22b5cf2f43b9c6` | [View Tx](https://testnet.arcscan.app/tx/0xc485728df0bf5ba0560a1ec66be8a1f5aa3ba044c55d9360bb22b5cf2f43b9c6) |
 | **settleWheelsDown** (126 kg CO₂, $3.15 real USDC pull) | `0x2ed8e3cb8c41f6cc5b67a3803544a26bdb224318a9b6ea853b201bd4af6655f5` | [View Tx](https://testnet.arcscan.app/tx/0x2ed8e3cb8c41f6cc5b67a3803544a26bdb224318a9b6ea853b201bd4af6655f5) |
 | **UI route settle** (RDY100, block 61386097) | `0xac86375297f7d7ab9a42d96fdf589a92e7d086b02fe8e999e5fd0cb97f2bef0a` | [View Tx](https://testnet.arcscan.app/tx/0xac86375297f7d7ab9a42d96fdf589a92e7d086b02fe8e999e5fd0cb97f2bef0a) |
+| **Owner flow, new vault** (LH756 register) | `0x827002c151a01613d812195e0b60c21d4a45b6aa944c5e998e28101d878798c5` | [View Tx](https://testnet.arcscan.app/tx/0x827002c151a01613d812195e0b60c21d4a45b6aa944c5e998e28101d878798c5) |
+| **Owner flow, new vault** (LH756 settle, block 61411397) | `0x9d695eb52525eda97292ef5d39236c4b6ae7cc1e8ba786d84540fa2a07b891a1` | [View Tx](https://testnet.arcscan.app/tx/0x9d695eb52525eda97292ef5d39236c4b6ae7cc1e8ba786d84540fa2a07b891a1) |
+| **Permissionless BYOK settle** (BYOK7, block 61411534, no allowlist) | `0xf37584f9ff844f012f0e597651ef6fbad7f9a10f0beae49bd4126644d7f35cde` | [View Tx](https://testnet.arcscan.app/tx/0xf37584f9ff844f012f0e597651ef6fbad7f9a10f0beae49bd4126644d7f35cde) |
 | **Circle fund Circle wallet** (1 USDC) | `0x47f1c306f78a7667fbbdae57fd3f07247d17ef41c92dc885e389f5a76b1423dd` | [View Tx](https://testnet.arcscan.app/tx/0x47f1c306f78a7667fbbdae57fd3f07247d17ef41c92dc885e389f5a76b1423dd) |
 | **Circle SDK transfer** (0.1 USDC, COMPLETE) | `0x524969b1da269b5a7d3de072c0ebe1f355431a43d3e451325adf4211f13f1072` | [View Tx](https://testnet.arcscan.app/tx/0x524969b1da269b5a7d3de072c0ebe1f355431a43d3e451325adf4211f13f1072) |
 
@@ -294,6 +297,15 @@ npm install
 npm run dev
 ```
 Open `http://localhost:3000` for the landing page and `http://localhost:3000/app` for the Flight Operations Console.
+
+### 4. Self-Testing With Your Own Key (Production BYOK)
+Anyone can settle their own test flights without allowlisting: the vault's
+registrar rule lets any address settle manifests it registered (the Aqua pull
+still requires that same treasury's own ship + approval, so no one can move
+anyone else's funds). In the console, open the flask icon → paste an Arc
+Testnet key (browser memory only, never sent anywhere) → fund it from the
+Circle faucet → every Settle button signs locally through
+register → approve → ship → settle. Owner-authorized agents work exactly as before.
 
 ---
 
