@@ -24,7 +24,7 @@ export const arcTestnet = defineChain({
 export const SKYROUTE_VAULT_ADDRESS: Address =
   (process.env.NEXT_PUBLIC_ARC_VAULT_ADDRESS as Address) ||
   (process.env.NEXT_PUBLIC_SKYROUTE_VAULT_ADDRESS as Address) ||
-  "0x469CA8E59ae25CBEEC2eA52617163E2396B9bdA1";
+  "0xe6bbB15BA58E46Cd02Cfa4B842A9e3Dc3a66b57F";
 
 export const SKYROUTE_VAULT_ABI = [
   {
@@ -71,6 +71,7 @@ export const SKYROUTE_VAULT_ABI = [
       { name: "maxBudgetUSDC", type: "uint256" },
       { name: "swapVmBytecode", type: "bytes" },
       { name: "strategyHash", type: "bytes32" },
+      { name: "registrar", type: "address" },
       { name: "settled", type: "bool" },
     ],
     stateMutability: "view",

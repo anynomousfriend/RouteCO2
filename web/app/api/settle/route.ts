@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     const vaultAddress: Address =
       (process.env.NEXT_PUBLIC_ARC_VAULT_ADDRESS as Address) ||
       (process.env.NEXT_PUBLIC_SKYROUTE_VAULT_ADDRESS as Address) ||
-      "0x469CA8E59ae25CBEEC2eA52617163E2396B9bdA1";
+      "0xe6bbB15BA58E46Cd02Cfa4B842A9e3Dc3a66b57F";
 
     const body = await request.json();
     const {

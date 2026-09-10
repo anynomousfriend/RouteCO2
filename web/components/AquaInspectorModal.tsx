@@ -24,7 +24,7 @@ export function AquaInspectorModal({
   isSettling,
   usdcAmount,
   co2Kg,
-  vaultAddress = "0x469CA8E59ae25CBEEC2eA52617163E2396B9bdA1",
+  vaultAddress = "0xe6bbB15BA58E46Cd02Cfa4B842A9e3Dc3a66b57F",
   aquaAddress = "0xE3Ec9dEb24fF3AD05cF0324b77DA128078780535",
 }: AquaInspectorModalProps) {
   // Close on Escape key

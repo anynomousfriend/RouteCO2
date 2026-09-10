@@ -11,7 +11,7 @@ import {
   type LiveFlightSummary,
 } from "@/lib/replay-scenarios";
 import {
-  loadBundledTrack,
+  loadBundledTracks,
   recordedToTrack,
   syntheticFixtureTracks,
   type PlayableTrack,
@@ -38,6 +38,8 @@ import {
   SessionDelegationModal,
   type SessionDelegationData,
 } from "@/components/SessionDelegationModal";
+import { ByokPanel } from "@/components/ByokPanel";
+import { deriveByokAddress } from "@/lib/byok-settler";
 import { FuelDynamicsBento } from "@/components/FuelDynamicsBento";
 import { SettlementIntegrityBento } from "@/components/SettlementIntegrityBento";
 import LandedSettlementQueue, {
@@ -335,17 +337,17 @@ export default function FlightOperationsConsole() {
   const [watched, setWatched] = useState<WatchedFlight[]>(() => loadWatchedFlights());
   const watchedKeys = useMemo(() => watched.map((w) => w.key), [watched]);
 
-  // Load bundled demo seed once, then rebuild the track list whenever
+  // Load bundled demo seeds once, then rebuild the track list whenever
   // recordings change. Synthetic fixtures only behind the dev flag.
   useEffect(() => {
     let cancelled = false;
-    loadBundledTrack().then((bundled) => {
+    loadBundledTracks().then((bundled) => {
       if (cancelled) return;
       const recorded = loadWatchedFlights()
         .filter((w) => w.status === "LANDED_RECORDED")
         .map((w) => recordedToTrack(w, "recorded"))
         .filter((t): t is PlayableTrack => t !== null);
-      const tracks = [...(bundled ? [bundled] : []), ...recorded, ...syntheticFixtureTracks()];
+      const tracks = [...bundled, ...recorded, ...syntheticFixtureTracks()];
       setPlayableTracks(tracks);
       setSelectedTrackId((prev) => prev || tracks[0]?.id || null);
     });
@@ -376,6 +378,25 @@ export default function FlightOperationsConsole() {
     }
   }, [playableTracks, selectedTrackId]);
 
+  const fmtZuluHM = (epochSec: number | null | undefined) => {
+    if (!epochSec) return "—";
+    try {
+      return `${new Date(epochSec * 1000).toISOString().slice(11, 16)}Z`;
+    } catch {
+      return "—";
+    }
+  };
+
+  /** Selects a replay track and resets transient playback/settlement state. */
+  const selectTrack = (trackId: string) => {
+    setSelectedTrackId(trackId);
+    setReplayIndex(0);
+    setIsPlaying(false);
+    setIsSettled(false);
+    setSettlementTxHash(undefined);
+    setCertificateData(null);
+  };
+
   // Replay Playback State
   const [replayIndex, setReplayIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -389,6 +410,19 @@ export default function FlightOperationsConsole() {
 
   // 1inch Aqua Shared TVU Inspector Modal State
   const [isAquaOpen, setIsAquaOpen] = useState(false);
+
+  // BYOK self-testing: visitor testnet key, memory-only (never persisted/sent).
+  // When active, settlements sign locally in-browser instead of the server route.
+  const [byokKey, setByokKey] = useState<`0x${string}` | null>(null);
+  const [isByokOpen, setIsByokOpen] = useState(false);
+  const byokAddress = useMemo(() => {
+    if (!byokKey) return null;
+    try {
+      return deriveByokAddress(byokKey);
+    } catch {
+      return null;
+    }
+  }, [byokKey]);
 
   // Track 3: Privy Scoped Session Delegation Key State
   const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
@@ -578,7 +612,9 @@ export default function FlightOperationsConsole() {
     if (isSettling) return;
 
     // Track 3: Verify Privy Scoped Session Delegation Key Bounds
-    if (sessionData.status === "Revoked") {
+    // Delegated-session bounds gate the server route only. BYOK settles with
+    // the visitor own key (own money), so these checks are skipped then.
+    if (!byokKey && sessionData.status === "Revoked") {
       toast.error("Settlement Blocked", {
         description:
           "Session delegation key has been revoked by dispatcher emergency abort. All automated settlements locked.",
@@ -586,7 +622,7 @@ export default function FlightOperationsConsole() {
       return;
     }
 
-    if (sessionData.status === "Pending Authorization") {
+    if (!byokKey && sessionData.status === "Pending Authorization") {
       toast.error("Authorization Required", {
         description:
           "Flight operations session key requires authorization before autonomous flight dispatch.",
@@ -595,7 +631,7 @@ export default function FlightOperationsConsole() {
       return;
     }
 
-    if (Date.now() > sessionData.expiresAt) {
+    if (!byokKey && Date.now() > sessionData.expiresAt) {
       toast.error("Session Key Expired", {
         description:
           "Delegated flight session key has expired. Please authorize a new session window.",
@@ -605,7 +641,7 @@ export default function FlightOperationsConsole() {
       return;
     }
 
-    if (usdcCost > sessionData.budgetCapUSDC) {
+    if (!byokKey && usdcCost > sessionData.budgetCapUSDC) {
       toast.error("Budget Cap Exceeded", {
         description: `Flight settlement cost ($${usdcCost.toFixed(
           2
@@ -621,12 +657,14 @@ export default function FlightOperationsConsole() {
     }
 
     // Pre-flight treasury spend guard: verify real USDC covers the pull before broadcasting.
+    // BYOK settles from the visitor's own wallet, so the guard checks that address.
     {
       const { checkTreasuryFunds, formatShortfall, FAUCET_HINT } = await import(
         "@/lib/treasury-guard"
       );
       const neededMicro = BigInt(Math.round(usdcCost * 1_000_000));
-      const funds = await checkTreasuryFunds(activeWalletAddress, neededMicro);
+      const guardTreasury = byokKey && byokAddress ? byokAddress : activeWalletAddress;
+      const funds = await checkTreasuryFunds(guardTreasury, neededMicro);
       if (!funds.ok) {
         toast.error("Insufficient Treasury USDC", {
           description: `${formatShortfall(funds)}. ${FAUCET_HINT}`,
@@ -645,30 +683,82 @@ export default function FlightOperationsConsole() {
     const category = isLive ? liveCategory : (activeTrack?.category || liveCategory);
 
     const toastId = toast.loading(
-      isLive
+      byokKey
+        ? `Signing Flight Settlement locally for ${callsign} (your key, your wallet)...`
+        : isLive
         ? `Broadcasting Flight Leg Settlement for ${callsign} to Arc Testnet...`
         : `Broadcasting Wheels-Down Settlement for ${callsign} to Arc Testnet...`
     );
 
-    try {
-      const res = await fetch("/api/settle", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          callsign,
-          aircraftCategory: category,
-          airborneSeconds,
-          fuelBurnKg,
-          co2Kg,
-          usdcAmount: BigInt(Math.round(usdcCost * 1_000_000)).toString(),
-          treasuryAddress: activeWalletAddress,
-          swapVmBytecode: "0x01020304",
-        }),
-      });
+    const STEP_LABELS: Record<string, string> = {
+      register: "manifest registered",
+      approve: "Aqua approved",
+      ship: "strategy shipped",
+      settle: "offset settled",
+      verify: "receipt verified",
+    };
 
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        throw new Error(data.error || "On-chain transaction execution failed");
+    try {
+      type SettleData = {
+        flightId?: string;
+        settleTxHash: string;
+        registerTxHash?: string;
+        blockNumber: number;
+        gasUsed: string;
+        explorerUrl: string;
+        scaledCostUSDC?: string;
+        totalCarbonOffsetKg?: string;
+        agentAddress?: string;
+        error?: string;
+      };
+      let data: SettleData;
+      if (byokKey) {
+        // BYOK: four transactions signed locally in-browser; the key never leaves this device.
+        const { runByokSettlement } = await import("@/lib/byok-settler");
+        const aquaAddress = process.env.NEXT_PUBLIC_AQUA_CORE_ADDRESS as `0x${string}`;
+        const usdcAddress = process.env.NEXT_PUBLIC_USDC_ADDRESS as `0x${string}`;
+        if (!aquaAddress || !usdcAddress) {
+          throw new Error("BYOK misconfigured: missing Aqua/USDC addresses.");
+        }
+        const result = await runByokSettlement(
+          byokKey,
+          {
+            callsign,
+            aircraftCategory: category,
+            airborneSeconds: Math.floor(airborneSeconds),
+            fuelBurnKg: Math.floor(fuelBurnKg),
+            co2Kg: Math.floor(co2Kg),
+            usdcAmountMicro: BigInt(Math.round(usdcCost * 1_000_000)),
+            swapVmBytecode: "0x01020304",
+            vaultAddress: DEPLOYED_VAULT_ADDRESS,
+            aquaAddress,
+            usdcAddress,
+          },
+          (s) => {
+            toast.loading(`BYOK: ${STEP_LABELS[s.step] || s.step}…`, { id: toastId });
+          }
+        );
+        data = { ...result, scaledCostUSDC: (usdcCost / 1000).toFixed(4) };
+      } else {
+        const res = await fetch("/api/settle", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            callsign,
+            aircraftCategory: category,
+            airborneSeconds,
+            fuelBurnKg,
+            co2Kg,
+            usdcAmount: BigInt(Math.round(usdcCost * 1_000_000)).toString(),
+            treasuryAddress: activeWalletAddress,
+            swapVmBytecode: "0x01020304",
+          }),
+        });
+
+        data = await res.json();
+        if (!res.ok || data.error) {
+          throw new Error(data.error || "On-chain transaction execution failed");
+        }
       }
 
       setIsSettled(true);
@@ -914,6 +1004,8 @@ export default function FlightOperationsConsole() {
         }}
         onOpenAqua={() => setIsAquaOpen(true)}
         onOpenSession={() => setIsSessionModalOpen(true)}
+        onOpenByok={() => setIsByokOpen(true)}
+        byokActive={Boolean(byokKey)}
         onConnectWallet={() => {
           if (authenticated) logout();
           else login();
@@ -961,19 +1053,15 @@ export default function FlightOperationsConsole() {
               onOpenSessionModal={() => setIsSessionModalOpen(true)}
               armedCallsign={armedFlightCallsign}
               onDisarm={() => disarmSettlement()}
-              treasuryAddress={activeWalletAddress}
+              treasuryAddress={byokKey && byokAddress ? byokAddress : activeWalletAddress}
               selectedCallsign={selectedFlight?.callsign}
+              byokKey={byokKey}
               onSettlementSuccess={(txHash, flight) => {
                 fetchBalance();
                 fetchCarbonCredits();
               }}
               onReplayRecording={(trackId) => {
-                setSelectedTrackId(trackId);
-                setReplayIndex(0);
-                setIsPlaying(false);
-                setIsSettled(false);
-                setSettlementTxHash(undefined);
-                setCertificateData(null);
+                selectTrack(trackId);
                 switchMode("replay");
               }}
             />
@@ -1060,6 +1148,66 @@ export default function FlightOperationsConsole() {
                 trackLabel={mode === "replay" ? activeTrack?.callsign : undefined}
               />
             </div>
+
+            {/* Real-flight track list (replay mode): recorded landings with
+                real takeoff/touchdown leg data; click selects, the single
+                timeline Settle button settles the selected track. */}
+            {mode === "replay" && playableTracks.length > 0 && (
+              <div className="absolute left-3 top-[76px] z-30 w-72 max-w-[calc(100%-24px)] max-h-[calc(100%-180px)] overflow-y-auto bg-[#1e2528]/95 backdrop-blur-md border border-dashed border-[#d3c6aa]/16">
+                <div className="px-3 py-2 text-[10px] font-mono uppercase tracking-wider text-[#859289] border-b border-dashed border-[#d3c6aa]/16 sticky top-0 bg-[#1e2528]">
+                  Landed Flights · Real Tracks ({playableTracks.length})
+                </div>
+                {playableTracks.slice(0, 6).map((t) => {
+                  const selected = t.id === activeTrack?.id;
+                  const leg = t.leg;
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => selectTrack(t.id)}
+                      className={`w-full text-left px-3 py-2.5 border-b border-dashed border-[#d3c6aa]/[0.08] transition-colors cursor-pointer ${
+                        selected ? "bg-[#d3c6aa]/10" : "hover:bg-[#d3c6aa]/[0.05]"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs font-bold text-[#d3c6aa]">
+                          {t.callsign}
+                        </span>
+                        <span
+                          className={`px-1.5 py-0.5 text-[9px] font-mono font-bold ${
+                            t.source === "synthetic"
+                              ? "bg-[#dbbc7f]/15 text-[#dbbc7f] border border-dashed border-[#dbbc7f]/40"
+                              : "bg-[#7fbbb3]/15 text-[#7fbbb3] border border-dashed border-[#7fbbb3]/40"
+                          }`}
+                        >
+                          {t.source === "synthetic"
+                            ? "SYNTHETIC FIXTURE"
+                            : t.source === "bundled"
+                            ? "RECORDED · DEMO"
+                            : `RECORDED · ${t.fixCount || 0} FIXES`}
+                        </span>
+                        {selected && (
+                          <span className="ml-auto w-2 h-2 bg-[#a7c080] blink-step shrink-0" />
+                        )}
+                      </div>
+                      <div className="text-[10.5px] font-mono text-[#859289] mt-1">
+                        {leg?.depAirport || leg?.firstSeen ? (
+                          <span>
+                            TO {leg?.depAirport || "???"} {fmtZuluHM(leg?.firstSeen)} → TD{" "}
+                            {leg?.arrAirport || "???"} {fmtZuluHM(leg?.lastSeen)}
+                          </span>
+                        ) : (
+                          <span>
+                            Observed {Math.round((t.observedSeconds || 0) / 60)} min ·{" "}
+                            {t.fixCount || 0} fixes (partial segment)
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
             {/* Fullscreen Map Canvas (3D Cesium Globe vs 2D Leaflet Radar) */}
             <div className="w-full h-full">
@@ -1258,12 +1406,7 @@ export default function FlightOperationsConsole() {
         onClose={() => setIsCommandOpen(false)}
         tracks={playableTracks}
         onSelectTrack={(track) => {
-          setSelectedTrackId(track.id);
-          setReplayIndex(0);
-          setIsPlaying(false);
-          setIsSettled(false);
-          setSettlementTxHash(undefined);
-          setCertificateData(null);
+          selectTrack(track.id);
           setMode("replay");
         }}
         onSwitchMode={(m) => switchMode(m)}
@@ -1352,6 +1495,17 @@ export default function FlightOperationsConsole() {
             description: "Session delegation key revoked immediately. All automated settlements locked.",
           });
         }}
+      />
+      {/* ── 8. BYOK SELF-TESTING PANEL (Track: permissionless demo) ── */}
+      <ByokPanel
+        isOpen={isByokOpen}
+        onClose={() => setIsByokOpen(false)}
+        activeAddress={byokAddress}
+        onActivate={(key) => {
+          setByokKey(key);
+          setIsByokOpen(false);
+        }}
+        onForget={() => setByokKey(null)}
       />
     </div>
   );

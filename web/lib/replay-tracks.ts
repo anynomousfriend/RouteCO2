@@ -26,6 +26,13 @@ export interface PlayableTrack extends ReplayScenario {
   capturedAt?: number;
   fixCount?: number;
   observedSeconds?: number;
+  /** Real leg-history enrichment (OpenSky flight-leg lookup, best-effort). */
+  leg?: {
+    depAirport?: string | null;
+    arrAirport?: string | null;
+    firstSeen?: number | null;
+    lastSeen?: number | null;
+  } | null;
 }
 
 export interface BundledTrackFile {
@@ -35,6 +42,7 @@ export interface BundledTrackFile {
   originCountry?: string;
   capturedAt: number;
   hub?: string;
+  leg?: PlayableTrack["leg"];
   fixes: RecordedFix[];
 }
 
@@ -96,7 +104,65 @@ export function recordedToTrack(
     capturedAt: opts.capturedAt ?? w.watchStartedAt,
     fixCount: frames.length,
     observedSeconds: observed,
+    leg: null,
   };
+}
+
+/** Loads ALL bundled demo seeds (/demo-tracks.json array, legacy /demo-track.json). */
+export async function loadBundledTracks(): Promise<PlayableTrack[]> {
+  const out: PlayableTrack[] = [];
+  try {
+    const res = await fetch("/demo-tracks.json", { cache: "force-cache" });
+    if (res.ok) {
+      const arr = (await res.json()) as BundledTrackFile[];
+      if (Array.isArray(arr)) {
+        for (const data of arr) {
+          const t = bundledFileToTrack(data);
+          if (t) out.push(t);
+        }
+      }
+    }
+  } catch {
+    // No bundle yet — demo grows from user recordings.
+  }
+  if (out.length === 0) {
+    // Legacy single-track asset fallback.
+    try {
+      const res = await fetch("/demo-track.json", { cache: "force-cache" });
+      if (res.ok) {
+        const data = (await res.json()) as BundledTrackFile;
+        const t = bundledFileToTrack(data);
+        if (t) out.push(t);
+      }
+    } catch {
+      // Absent — fine.
+    }
+  }
+  return out;
+}
+
+function bundledFileToTrack(data: BundledTrackFile): PlayableTrack | null {
+  if (!data || !Array.isArray(data.fixes) || data.fixes.length < 2) return null;
+  const track = recordedToTrack(
+    {
+      key: (data.icao24 || data.callsign).toLowerCase(),
+      icao24: (data.icao24 || "").toLowerCase(),
+      callsign: String(data.callsign).toUpperCase(),
+      equipmentType: data.equipmentType,
+      originCountry: data.originCountry,
+      watchStartedAt: data.capturedAt || Date.now(),
+      status: "LANDED_RECORDED",
+      landedAt: data.capturedAt,
+      fixes: data.fixes,
+    },
+    "bundled",
+    {
+      capturedAt: data.capturedAt,
+      label: data.hub ? `Recorded Live Track · ${data.hub}` : "Recorded Live Track · Demo Seed",
+    }
+  );
+  if (track && data.leg) track.leg = data.leg;
+  return track;
 }
 
 /** Loads the bundled canonical demo track (/demo-track.json); null when absent. */
@@ -105,25 +171,7 @@ export async function loadBundledTrack(): Promise<PlayableTrack | null> {
     const res = await fetch("/demo-track.json", { cache: "force-cache" });
     if (!res.ok) return null;
     const data = (await res.json()) as BundledTrackFile;
-    if (!data || !Array.isArray(data.fixes) || data.fixes.length < 2) return null;
-    return recordedToTrack(
-      {
-        key: (data.icao24 || data.callsign).toLowerCase(),
-        icao24: (data.icao24 || "").toLowerCase(),
-        callsign: String(data.callsign).toUpperCase(),
-        equipmentType: data.equipmentType,
-        originCountry: data.originCountry,
-        watchStartedAt: data.capturedAt || Date.now(),
-        status: "LANDED_RECORDED",
-        landedAt: data.capturedAt,
-        fixes: data.fixes,
-      },
-      "bundled",
-      {
-        capturedAt: data.capturedAt,
-        label: data.hub ? `Recorded Live Track · ${data.hub}` : "Recorded Live Track · Demo Seed",
-      }
-    );
+    return bundledFileToTrack(data);
   } catch {
     return null;
   }

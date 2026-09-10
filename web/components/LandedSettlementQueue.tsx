@@ -74,6 +74,8 @@ export interface LandedSettlementQueueProps {
   selectedCallsign?: string;
   /** Replay-first flow for recorded-path cards (track id === record id). */
   onReplayRecording?: (trackId: string) => void;
+  /** Visitor testnet key (memory-only): settle signs locally instead of the server route. */
+  byokKey?: `0x${string}` | null;
 }
 
 export default function LandedSettlementQueue({
@@ -87,6 +89,7 @@ export default function LandedSettlementQueue({
   treasuryAddress,
   selectedCallsign,
   onReplayRecording,
+  byokKey = null,
 }: LandedSettlementQueueProps) {
   const [internalFlights, setInternalFlights] = useState<LandedFlightRecord[]>([]);
   const [isLoadingLanded, setIsLoadingLanded] = useState(false);
@@ -224,8 +227,8 @@ export default function LandedSettlementQueue({
 
   // Execute on-chain settlement on Arc Testnet via /api/settle
   const handleSettleFlight = async (flight: LandedFlightRecord) => {
-    // Budget check against active session cap
-    if (flight.estimate.usdcCost > activeSessionCap) {
+    // Budget check against active session cap (server route only; BYOK spends own money)
+    if (!byokKey && flight.estimate.usdcCost > activeSessionCap) {
       toast.error("Delegated Session Budget Exceeded", {
         description: `Required offset ($${flight.estimate.usdcCost.toLocaleString()} USDC) exceeds your active session cap ($${activeSessionCap.toLocaleString()} USDC). Increase cap in Session Delegation.`,
         action: onOpenSessionModal
@@ -258,30 +261,85 @@ export default function LandedSettlementQueue({
       prev.map((f) => (f.id === flight.id ? { ...f, status: "SETTLING" } : f))
     );
 
-    const toastId = toast.loading(`Broadcasting SwapVM Settlement for ${flight.callsign}...`, {
-      description: `Retiring ${flight.estimate.totalCo2Kg.toLocaleString()} kg verified CO2 via Arc Testnet (5042002)`,
-    });
+    const toastId = toast.loading(
+      byokKey
+        ? `Signing SwapVM Settlement locally for ${flight.callsign} (your key)...`
+        : `Broadcasting SwapVM Settlement for ${flight.callsign}...`,
+      {
+        description: `Retiring ${flight.estimate.totalCo2Kg.toLocaleString()} kg verified CO2 via Arc Testnet (5042002)`,
+      }
+    );
 
     try {
-      const res = await fetch("/api/settle", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          callsign: flight.callsign,
-          aircraftCategory: flight.airframe.category,
-          category: flight.airframe.category,
-          airborneSeconds: flight.airborneSeconds,
-          fuelBurnKg: flight.estimate.totalFuelBurnKg,
-          co2Kg: flight.estimate.totalCo2Kg,
-          usdcAmount: flight.estimate.usdcAmountMicro.toString(),
-          swapVmBytecode: flight.estimate.swapVmBytecode,
-        }),
-      });
+      type QueueSettleData = {
+        settleTxHash: string;
+        settlementTxHash?: string;
+        registerTxHash?: string;
+        manifestTxHash?: string;
+        explorerUrl: string;
+        gasUsed?: string;
+      };
+      let data: QueueSettleData;
+      if (byokKey) {
+        // BYOK: four transactions signed locally in-browser; key never leaves this device.
+        const { runByokSettlement } = await import("@/lib/byok-settler");
+        const { SKYROUTE_VAULT_ADDRESS } = await import("@/lib/arc-client");
+        const aquaAddress = process.env.NEXT_PUBLIC_AQUA_CORE_ADDRESS as `0x${string}`;
+        const usdcAddress = process.env.NEXT_PUBLIC_USDC_ADDRESS as `0x${string}`;
+        if (!aquaAddress || !usdcAddress) {
+          throw new Error("BYOK misconfigured: missing Aqua/USDC addresses.");
+        }
+        const STEP_LABELS: Record<string, string> = {
+          register: "manifest registered",
+          approve: "Aqua approved",
+          ship: "strategy shipped",
+          settle: "offset settled",
+          verify: "receipt verified",
+        };
+        const result = await runByokSettlement(
+          byokKey,
+          {
+            callsign: flight.callsign,
+            aircraftCategory: flight.airframe.category,
+            airborneSeconds: Math.floor(flight.airborneSeconds),
+            fuelBurnKg: Math.floor(flight.estimate.totalFuelBurnKg),
+            co2Kg: Math.floor(flight.estimate.totalCo2Kg),
+            usdcAmountMicro: BigInt(flight.estimate.usdcAmountMicro.toString()),
+            swapVmBytecode: flight.estimate.swapVmBytecode as `0x${string}`,
+            vaultAddress: SKYROUTE_VAULT_ADDRESS,
+            aquaAddress,
+            usdcAddress,
+          },
+          (s) => {
+            toast.loading(`BYOK: ${STEP_LABELS[s.step] || s.step}…`, { id: toastId });
+          }
+        );
+        data = {
+          settleTxHash: result.settleTxHash,
+          explorerUrl: result.explorerUrl,
+          gasUsed: result.gasUsed,
+        };
+      } else {
+        const res = await fetch("/api/settle", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            callsign: flight.callsign,
+            aircraftCategory: flight.airframe.category,
+            category: flight.airframe.category,
+            airborneSeconds: flight.airborneSeconds,
+            fuelBurnKg: flight.estimate.totalFuelBurnKg,
+            co2Kg: flight.estimate.totalCo2Kg,
+            usdcAmount: flight.estimate.usdcAmountMicro.toString(),
+            swapVmBytecode: flight.estimate.swapVmBytecode,
+          }),
+        });
 
-      const data = await res.json();
+        data = await res.json();
 
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || "Settlement broadcast failed");
+        if (!res.ok || !(data as { success?: boolean }).success) {
+          throw new Error((data as { error?: string }).error || "Settlement broadcast failed");
+        }
       }
 
       const txHash: string =
