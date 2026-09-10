@@ -34,51 +34,51 @@ export function SettlementIntegrityBento({
 
   return (
     <div
-      className={`w-full bg-[#152232] text-white rounded-2xl p-4 border border-[#23354B] shadow-sm flex flex-col justify-between select-none ${className}`}
+      className={`w-full bg-[#1e2528] text-[#d3c6aa] p-4 border border-dashed border-[#d3c6aa]/16 flex flex-col justify-between select-none font-mono ${className}`}
     >
       {/* Header */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-neutral-300">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-[#9daaa4]">
+            <ShieldCheck className="w-3.5 h-3.5 text-[#a7c080]" />
             <span className="uppercase tracking-wider">Settlement Integrity Status</span>
           </div>
           <div className="flex items-center gap-1 text-[10px] font-mono">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-emerald-400 font-bold">Arc L1 5042002</span>
+            <span className="w-1.5 h-1.5 bg-[#a7c080] blink-step" />
+            <span className="text-[#a7c080] font-bold">Arc L1 5042002</span>
           </div>
         </div>
 
-        {/* Stepped Area / Candlestick Chart (Matching Reference's Well Integrity Chart) */}
-        <div className="relative h-20 w-full flex items-end justify-between gap-2 pt-2 pb-1 border-b border-white/10">
+        {/* Stepped Area / Candlestick Chart */}
+        <div className="relative h-20 w-full flex items-end justify-between gap-2 pt-2 pb-1 border-b border-dashed border-[#d3c6aa]/16">
           {steps.map((step, idx) => {
-            const isEmerald = step.status === "green";
+            const isGreen = step.status === "green";
             return (
               <div key={idx} className="flex-1 flex flex-col items-center gap-1 h-full justify-end group">
                 <div className="w-full flex items-end justify-center h-full">
                   <div
                     style={{ height: `${step.val}%` }}
-                    className={`w-full max-w-[20px] rounded-t-xs transition-[height,background-color] duration-300 ${
-                      isEmerald
-                        ? "bg-emerald-500/80 group-hover:bg-emerald-400"
-                        : "bg-amber-500/80 group-hover:bg-amber-400"
+                    className={`w-full max-w-[20px] transition-[height,background-color] duration-300 ${
+                      isGreen
+                        ? "bg-[#a7c080]/80 group-hover:bg-[#a7c080]"
+                        : "bg-[#dbbc7f]/80 group-hover:bg-[#dbbc7f]"
                     }`}
                   />
                 </div>
-                <span className="text-[9px] font-mono text-neutral-400">{step.time}</span>
+                <span className="text-[9px] font-mono text-[#859289]">{step.time}</span>
               </div>
             );
           })}
         </div>
       </div>
 
-      {/* Narrative Status Footer (Matching Reference's Well Integrity Status text) */}
-      <div className="mt-3 flex items-start gap-2.5 text-[11px] text-neutral-300 leading-snug">
-        <div className="w-6 h-6 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0 mt-0.5">
-          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+      {/* Narrative Status Footer */}
+      <div className="mt-3 flex items-start gap-2.5 text-[11px] leading-snug">
+        <div className="w-6 h-6 bg-[#a7c080]/10 border border-dashed border-[#a7c080]/30 flex items-center justify-center shrink-0 mt-0.5">
+          <CheckCircle2 className="w-3.5 h-3.5 text-[#a7c080]" />
         </div>
         <div className="flex-1 space-y-1">
-          <p className="text-[10.5px] text-neutral-300 leading-relaxed">
+          <p className="text-[10.5px] text-[#9daaa4] leading-relaxed">
             {isSettled ? (
               <>
                 Wheels-Down transponder signal verified on Runway {runway} ({destinationAirport}). 1inch Aqua zero-custody draw confirmed on Arc Testnet {blockNumber ? `Block #${blockNumber}` : "Receipt"} with zero escrow lockup.
@@ -98,7 +98,7 @@ export function SettlementIntegrityBento({
               href={`https://testnet.arcscan.app/tx/${settlementTxHash}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-[10px] font-mono text-cyan-400 hover:underline pt-0.5"
+              className="inline-flex items-center gap-1 text-[10px] font-mono text-[#7fbbb3] hover:underline pt-0.5"
             >
               <span>Verify {blockNumber ? `Block #${blockNumber}` : "Receipt"} on ArcScan</span>
               <ExternalLink className="w-3 h-3" />

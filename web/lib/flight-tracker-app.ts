@@ -63,7 +63,7 @@ export class FlightTrackerApp {
     this.viewer = viewer;
     this.callbacks = callbacks;
     this.layer = new FlightsCesiumLayer(viewer);
-    this.trail = new FlightTrailRenderer(viewer, "#3ecf8e", 3.0);
+    this.trail = new FlightTrailRenderer(viewer, "#a7c080", 3.0);
     this.enrichment = new AdsbdbQueue();
   }
 

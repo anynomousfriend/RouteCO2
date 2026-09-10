@@ -134,9 +134,9 @@ export class FlightsCesiumLayer {
         width: 26,
         height: 26,
         color: isTracked
-          ? Cesium.Color.fromCssColorString("#3ecf8e") // RouteCO2 emerald
+          ? Cesium.Color.fromCssColorString("#a7c080") // RouteCO2 evergreen
           : isLanded
-          ? Cesium.Color.fromCssColorString("#f59e0b") // Amber for landed/ground
+          ? Cesium.Color.fromCssColorString("#dbbc7f") // Everforest yellow for landed/ground
           : Cesium.Color.WHITE,
         alignedAxis: Cesium.Cartesian3.ZERO,
         // Disable depth test to prevent aircraft from clipping into terrain
@@ -184,7 +184,7 @@ export class FlightsCesiumLayer {
     if (this.trackedIcao && this.aircraftMap.has(this.trackedIcao)) {
       const prev = this.aircraftMap.get(this.trackedIcao)!;
       prev.bb.color = prev.meta.onGround
-        ? Cesium.Color.fromCssColorString("#f59e0b")
+        ? Cesium.Color.fromCssColorString("#dbbc7f")
         : Cesium.Color.WHITE;
       prev.bb.width = 26;
       prev.bb.height = 26;
@@ -193,7 +193,7 @@ export class FlightsCesiumLayer {
     this.trackedIcao = icao24;
     if (icao24 && this.aircraftMap.has(icao24)) {
       const current = this.aircraftMap.get(icao24)!;
-      current.bb.color = Cesium.Color.fromCssColorString("#3ecf8e"); // RouteCO2 emerald
+      current.bb.color = Cesium.Color.fromCssColorString("#a7c080"); // RouteCO2 evergreen
       current.bb.width = 34;
       current.bb.height = 34;
     }

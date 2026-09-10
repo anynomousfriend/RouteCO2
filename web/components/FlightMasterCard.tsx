@@ -109,7 +109,7 @@ export function FlightMasterCard({
 
   return (
     <div
-      className={`w-full max-w-[420px] bg-white rounded-3xl p-4 border border-black/[0.08] shadow-[0_4px_24px_rgba(0,0,0,0.04)] flex flex-col gap-2.5 select-none ${className}`}
+      className={`w-full max-w-[420px] bg-[#343f44] p-4 border border-dashed border-[#d3c6aa]/16 flex flex-col gap-2.5 select-none ${className}`}
     >
       {/* ── TOP: SEARCH & 2X2 UNIFIED BENTO METRIC TILES ── */}
       <div className="flex flex-col gap-2 px-1">
@@ -117,80 +117,80 @@ export function FlightMasterCard({
         <button
           type="button"
           onClick={onOpenCommandSearch}
-          className="w-full h-10 px-3.5 bg-neutral-100/80 hover:bg-neutral-100 rounded-xl border border-black/[0.06] flex items-center justify-between text-xs text-neutral-400 cursor-pointer active:scale-[0.98] transition-[transform,colors] duration-140"
+          className="w-full h-10 px-3.5 bg-[#2d353b] hover:bg-[#2d353b]/80 flex items-center justify-between text-xs cursor-pointer active:scale-[0.98] transition-[transform,colors] duration-140 border border-dashed border-[#d3c6aa]/16 hover:border-[#a7c080]/50"
         >
           <div className="flex items-center gap-2">
-            <Search className="w-4 h-4 text-neutral-400" />
-            <span className="text-neutral-500 font-sans">Search flight, airport, model...</span>
+            <Search className="w-4 h-4 text-[#859289]" />
+            <span className="text-[#9daaa4] font-mono">Search flight, airport, model...</span>
           </div>
-          <kbd className="px-2 py-0.5 text-[10px] font-mono text-neutral-500 bg-white rounded border border-black/[0.08] shadow-2xs">
+          <kbd className="px-2 py-0.5 text-[10px] font-mono text-[#9daaa4] bg-[#272e33] border border-[#d3c6aa]/16">
             ⌘K
           </kbd>
         </button>
 
-        {/* 2x2 Bento Metric Tiles (Unified Cockpit Slate Palette with left & right margin) */}
+        {/* 2x2 Bento Metric Tiles — Everforest terminal readouts */}
         <div className="grid grid-cols-2 gap-2.5 mx-1">
           {/* Tile 1: Arc L1 Finality */}
-          <div className="bg-[#0C111D] text-white border border-white/10 rounded-2xl p-3 flex flex-col justify-between h-[84px] shadow-sm hover:border-white/20 transition-colors">
-            <span className="text-[9.5px] font-mono uppercase tracking-wider text-neutral-400">
+          <div className="bg-[#1e2528] border border-dashed border-[#d3c6aa]/16 hover:border-[#7fbbb3]/50 p-3 flex flex-col justify-between h-[84px] transition-colors">
+            <span className="text-[9.5px] font-mono uppercase tracking-[0.14em] text-[#859289]">
               Arc L1 Finality
             </span>
             <div>
-              <div className="font-mono text-[19px] font-bold text-white leading-none tabular-nums">
-                &lt; 800<span className="text-xs font-sans text-neutral-400 ml-1 font-normal">ms</span>
+              <div className="font-mono text-[19px] font-semibold text-[#d3c6aa] leading-none tabular-nums">
+                &lt; 800<span className="text-xs text-[#859289] ml-1 font-normal">ms</span>
               </div>
-              <div className="text-[9px] font-mono text-emerald-400 mt-1 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              <div className="text-[9px] font-mono text-[#a7c080] mt-1 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 bg-[#a7c080] blink-step" />
                 <span>Sub-second 100%</span>
               </div>
             </div>
           </div>
 
           {/* Tile 2: Arc Treasury */}
-          <div className="bg-[#0C111D] text-white border border-white/10 rounded-2xl p-3 flex flex-col justify-between h-[84px] shadow-sm hover:border-white/20 transition-colors">
-            <span className="text-[9.5px] font-mono uppercase tracking-wider text-neutral-400">
+          <div className="bg-[#1e2528] border border-dashed border-[#d3c6aa]/16 hover:border-[#7fbbb3]/50 p-3 flex flex-col justify-between h-[84px] transition-colors">
+            <span className="text-[9.5px] font-mono uppercase tracking-[0.14em] text-[#859289]">
               Arc Treasury
             </span>
             <div>
-              <div className="font-mono text-[19px] font-bold text-white leading-none tabular-nums">
+              <div className="font-mono text-[19px] font-semibold text-[#d3c6aa] leading-none tabular-nums">
                 ${isBalanceLoading ? "..." : (treasuryBalance || "0.00")}
-                <span className="text-xs font-sans ml-1 text-neutral-400 font-normal">USDC</span>
+                <span className="text-xs ml-1 text-[#859289] font-normal">USDC</span>
               </div>
-              <div className="text-[9px] font-mono text-neutral-400 mt-1">
+              <div className="text-[9px] font-mono text-[#859289] mt-1">
                 Chain ID 5042002
               </div>
             </div>
           </div>
 
           {/* Tile 3: Settlement Cost */}
-          <div className="bg-[#0C111D] text-white border border-white/10 rounded-2xl p-3 flex flex-col justify-between h-[84px] shadow-sm hover:border-white/20 transition-colors">
-            <span className="text-[9.5px] font-mono uppercase tracking-wider text-neutral-400">
+          <div className="bg-[#1e2528] border border-dashed border-[#d3c6aa]/16 hover:border-[#dbbc7f]/50 p-3 flex flex-col justify-between h-[84px] transition-colors">
+            <span className="text-[9.5px] font-mono uppercase tracking-[0.14em] text-[#859289]">
               Settlement Cost
             </span>
             <div>
-              <div className="font-mono text-[19px] font-bold text-white leading-none tabular-nums">
+              <div className="font-mono text-[19px] font-semibold text-[#dbbc7f] leading-none tabular-nums">
                 ${scaledCostUSDC || (usdcCost / 1000).toFixed(4)}
-                <span className="text-xs font-sans text-neutral-400 ml-1 font-normal">USDC</span>
+                <span className="text-xs ml-1 text-[#859289] font-normal">USDC</span>
               </div>
-              <div className="text-[9px] font-mono text-neutral-400 mt-1">
+              <div className="text-[9px] font-mono text-[#859289] mt-1">
                 1:1k Scale (${usdcCost.toFixed(2)})
               </div>
             </div>
           </div>
 
           {/* Tile 4: Carbon Retired */}
-          <div className="bg-[#0C111D] text-white border border-white/10 rounded-2xl p-3 flex flex-col justify-between h-[84px] shadow-sm hover:border-white/20 transition-colors">
-            <span className="text-[9.5px] font-mono uppercase tracking-wider text-neutral-400">
+          <div className="bg-[#1e2528] border border-dashed border-[#d3c6aa]/16 hover:border-[#a7c080]/50 p-3 flex flex-col justify-between h-[84px] transition-colors">
+            <span className="text-[9.5px] font-mono uppercase tracking-[0.14em] text-[#859289]">
               Carbon Retired
             </span>
             <div>
-              <div className="font-mono text-[19px] font-bold text-emerald-400 leading-none tabular-nums flex items-baseline">
+              <div className="font-mono text-[19px] font-semibold text-[#a7c080] leading-none tabular-nums flex items-baseline">
                 {isCreditsLoading ? "..." : (
                   <NumberFlow value={Number(totalCarbonCredits || co2Kg)} />
                 )}
-                <span className="text-xs font-sans ml-1 text-emerald-400/80 font-normal">kg</span>
+                <span className="text-xs ml-1 text-[#a7c080]/80 font-normal">kg</span>
               </div>
-              <div className="text-[9px] font-mono text-emerald-400/90 mt-1">
+              <div className="text-[9px] font-mono text-[#a7c080]/90 mt-1">
                 Verified on Arc L1
               </div>
             </div>
@@ -199,51 +199,51 @@ export function FlightMasterCard({
       </div>
 
       {/* ── MIDDLE: FLIGHT IDENTITY & OPERATIONAL SPECS ── */}
-      <div className="flex flex-col gap-2 pt-2 border-t border-black/[0.08] px-1">
+      <div className="flex flex-col gap-2 pt-2 border-t border-dashed border-[#d3c6aa]/16 px-1">
         {/* Location Breadcrumb & Airspace Title */}
         <div>
-          <div className="flex items-center gap-1.5 text-[11px] font-medium text-neutral-500 mb-1">
-            <MapPin className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
+          <div className="flex items-center gap-1.5 text-[11px] font-medium text-[#859289] mb-1 font-mono">
+            <MapPin className="w-3.5 h-3.5 text-[#859289] shrink-0" />
             <span className="truncate">{locationText}</span>
           </div>
-          <h1 className="font-mono text-[26px] font-bold tracking-tight text-neutral-950 leading-none">
+          <h1 className="font-mono text-[26px] font-semibold tracking-tight text-[#d3c6aa] leading-none">
             {callsign}
           </h1>
-          <div className="text-xs text-neutral-500 font-sans mt-1 flex items-center gap-1.5">
-            <span className="font-medium text-neutral-700">{airframe}</span>
-            <span className="text-neutral-300">·</span>
+          <div className="text-xs text-[#9daaa4] font-mono mt-1 flex items-center gap-1.5">
+            <span className="font-medium text-[#d3c6aa]">{airframe}</span>
+            <span className="text-[#859289]">·</span>
             <span>{mode === "replay" ? scenario.airline : "Commercial Carrier"}</span>
           </div>
         </div>
 
         {/* Active Transponder Status Tag */}
-        <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-emerald-500/[0.08] border border-emerald-500/20 text-[11px] font-mono text-emerald-950">
+        <div className="flex items-center justify-between px-3 py-1.5 bg-[#a7c080]/[0.08] border border-dashed border-[#a7c080]/30 text-[11px] font-mono">
           <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-emerald-800 font-medium">Transponder:</span>
-            <strong className="font-bold text-emerald-950">0x{icaoHex.toUpperCase().replace("0X", "")}</strong>
+            <span className="w-2 h-2 bg-[#a7c080] blink-step" />
+            <span className="text-[#a7c080] font-medium">Transponder:</span>
+            <strong className="font-semibold text-[#d3c6aa]">0x{icaoHex.toUpperCase().replace("0X", "")}</strong>
           </span>
-          <span className="text-emerald-700 text-[10px] font-medium">1090 MHz ADS-B</span>
+          <span className="text-[#a7c080]/80 text-[10px] font-medium">1090 MHz ADS-B</span>
         </div>
 
         {/* Key Operational Metrics: Clean Hairline List */}
         <div className="space-y-1 text-xs pt-0.5">
           <div className="flex items-center justify-between py-0.5 px-1">
-            <span className="flex items-center gap-2 text-neutral-500 font-sans">
-              <Fuel className="w-3.5 h-3.5 text-neutral-400" />
+            <span className="flex items-center gap-2 text-[#859289] font-mono">
+              <Fuel className="w-3.5 h-3.5 text-[#e69875]" />
               <span>ICAO Hourly Fuel Burn</span>
             </span>
-            <span className="font-mono font-semibold text-neutral-900 tabular-nums">
+            <span className="font-mono font-semibold text-[#d3c6aa] tabular-nums">
               {displayedHourlyBurn.toLocaleString()} kg/hr
             </span>
           </div>
 
-          <div className="flex items-center justify-between py-0.5 px-1 border-t border-black/[0.04]">
-            <span className="flex items-center gap-2 text-neutral-500 font-sans">
-              <Leaf className="w-3.5 h-3.5 text-neutral-400" />
+          <div className="flex items-center justify-between py-0.5 px-1 border-t border-dashed border-[#d3c6aa]/[0.08]">
+            <span className="flex items-center gap-2 text-[#859289] font-mono">
+              <Leaf className="w-3.5 h-3.5 text-[#a7c080]" />
               <span>Verified CO₂ Factor</span>
             </span>
-            <span className="font-mono font-semibold text-neutral-900 tabular-nums">
+            <span className="font-mono font-semibold text-[#d3c6aa] tabular-nums">
               3.16 CORSIA Standard
             </span>
           </div>

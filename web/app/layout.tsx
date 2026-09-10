@@ -40,15 +40,16 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="bg-[#EBEBEB] text-[#000000] min-h-screen antialiased selection:bg-[#7C4DFF]/20 selection:text-[#000000]">
+      <body className="bg-[#2d353b] text-[#d3c6aa] min-h-screen antialiased selection:bg-[#83c092] selection:text-[#2d353b] font-mono">
         <Providers>
           {children}
           <AgentationToolbar />
           <Toaster
             position="bottom-right"
-            theme="light"
+            theme="dark"
             toastOptions={{
-              className: "!bg-white !border !border-black/10 !text-black !shadow-2xl !rounded-2xl font-sans",
+              className:
+                "!bg-[#1e2528] !border !border-dashed !border-[#d3c6aa]/20 !text-[#d3c6aa] !shadow-2xl !rounded-lg font-mono",
             }}
           />
         </Providers>

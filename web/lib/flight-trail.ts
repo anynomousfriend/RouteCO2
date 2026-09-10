@@ -21,7 +21,7 @@ export class FlightTrailRenderer {
   private currentLivePos: Cesium.Cartesian3 | null = null;
   private currentGroundPos: Cesium.Cartesian3 | null = null;
 
-  constructor(viewer: Cesium.Viewer, colorHex = "#3ecf8e", width = 3.0) {
+  constructor(viewer: Cesium.Viewer, colorHex = "#a7c080", width = 3.0) {
     this.viewer = viewer;
     this.baseColor = Cesium.Color.fromCssColorString(colorHex);
     this.width = width;
@@ -110,7 +110,7 @@ export class FlightTrailRenderer {
           }, false),
           width: 1.2,
           material: new Cesium.PolylineDashMaterialProperty({
-            color: Cesium.Color.fromCssColorString("#3ecf8e").withAlpha(0.5),
+            color: Cesium.Color.fromCssColorString("#a7c080").withAlpha(0.5),
             dashLength: 12.0,
           }),
           arcType: Cesium.ArcType.NONE,

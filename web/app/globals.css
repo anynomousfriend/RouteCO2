@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -5,99 +7,150 @@
 @import "leaflet/dist/leaflet.css";
 @import "cesium/Build/Cesium/Widgets/widgets.css";
 
+/* ================= EVERFOREST TOKENS (matches landing page routeco2.css) ================= */
 :root {
-  --bg-main: #EBEBEB;
-  --card-bg: #FFFFFF;
-  --accent-violet: #7C4DFF;
-  --accent-citron: #F5FF7A;
-  --accent-orange: #FF5F1F;
-  --accent-blue: #007AFF;
-  --accent-lilac: #E6C9F2;
-  --accent-maroon: #6B2424;
-  --text-primary: #000000;
-  --text-secondary: #666666;
-  --radius: 24px;
-  --serif: "Times New Roman", Times, Georgia, serif;
-  --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --bg0: #2d353b; --bg1: #343f44; --bg2: #3d484d; --bg3: #475258; --bg4: #4f585e;
+  --bg-dim: #272e33; --bg-deep: #1e2528;
+  --fg: #d3c6aa; --grey1: #859289; --grey2: #9daaa4;
+  --red: #e67e80; --orange: #e69875; --yellow: #dbbc7f;
+  --green: #a7c080; --aqua: #83c092; --blue: #7fbbb3;
+  --line: rgba(211, 198, 170, 0.16);
+  --line-soft: rgba(211, 198, 170, 0.09);
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+  --disp: "Space Grotesk", sans-serif;
+  /* dithered checkerboard patterns (ordered-dither texture, 2px cells) */
+  --checker-green: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Crect width='4' height='4' fill='%23a7c080'/%3E%3Crect width='2' height='2' fill='%232d353b'/%3E%3Crect x='2' y='2' width='2' height='2' fill='%232d353b'/%3E%3C/svg%3E");
+  --checker-fg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Crect width='2' height='2' fill='%23d3c6aa'/%3E%3Crect x='2' y='2' width='2' height='2' fill='%23d3c6aa'/%3E%3C/svg%3E");
+  --checker-yellow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Crect width='2' height='2' fill='%23dbbc7f'/%3E%3Crect x='2' y='2' width='2' height='2' fill='%23dbbc7f'/%3E%3C/svg%3E");
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
 }
 
+html,
 body {
-  color: var(--text-primary);
-  background: var(--bg-main);
-  font-family: var(--sans);
-  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  height: 100%;
+}
+
+body {
+  color: var(--fg);
+  background: var(--bg0);
+  font-family: var(--mono);
+  font-size: 15px;
   overflow-x: hidden;
   overflow-y: auto;
 }
 
-.blob {
-  position: absolute;
-  width: 180px;
-  height: 140px;
-  bottom: -20px;
-  right: -20px;
-  opacity: 0.9;
-  z-index: 1;
+::selection {
+  background: var(--aqua);
+  color: var(--bg0);
 }
 
-.blob-1 { background: var(--accent-citron); clip-path: polygon(25% 0%, 100% 20%, 80% 100%, 0% 70%); }
-.blob-2 { background: var(--accent-lilac); clip-path: circle(50% at 50% 50%); }
-.blob-3 { background: var(--accent-orange); border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; }
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-deep);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--bg3);
+  border: 2px solid var(--bg-deep);
+}
 
-.maroon-bg { background-color: var(--accent-maroon); color: white; }
-.blue-bg { background-color: var(--accent-blue); color: white; }
-.citron-bg { background-color: var(--accent-citron); color: var(--text-primary); }
+/* Global film of ordered dither over the ops console — ties it to the landing page */
+.ops-grain {
+  position: fixed;
+  inset: 0;
+  z-index: 800;
+  pointer-events: none;
+  background-image: var(--checker-fg);
+  background-size: 4px 4px;
+  opacity: 0.045;
+}
 
-/* Leaflet radar styling */
+/* Dithered text fill (landing hero treatment) */
+.dither-green-text {
+  background-image: var(--checker-green);
+  background-size: 4px 4px;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Dithered status strip pattern */
+.dither-strip-green {
+  background-image: var(--checker-green);
+  background-size: 6px 6px;
+  opacity: 0.35;
+}
+.dither-strip-fg {
+  background-image: var(--checker-fg);
+  background-size: 6px 6px;
+  opacity: 0.2;
+}
+
+/* Leaflet radar styling — Everforest */
 .leaflet-container {
-  background-color: #0B0F19 !important;
-  font-family: inherit;
+  background-color: var(--bg-deep) !important;
+  font-family: var(--mono);
 }
 
-/* Esri Dark Gray Canvas styling - rich dark obsidian with subtle coastlines */
+/* Esri Dark Gray Canvas styling — tinted toward Everforest */
 .leaflet-tile {
-  filter: brightness(0.8) contrast(1.25) saturate(0.8);
+  filter: sepia(0.28) hue-rotate(65deg) saturate(0.55) brightness(0.74) contrast(1.18);
 }
 
 .leaflet-control-zoom {
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
-  background: rgba(11, 15, 25, 0.85) !important;
-  backdrop-filter: blur(16px) !important;
-  border-radius: 12px !important;
+  border: 1px dashed var(--line) !important;
+  background: rgba(30, 37, 40, 0.92) !important;
+  backdrop-filter: blur(10px) !important;
+  border-radius: 4px !important;
   overflow: hidden;
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5) !important;
 }
 
 .leaflet-control-zoom a {
   background: transparent !important;
-  color: #94A3B8 !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  color: var(--grey2) !important;
+  border-bottom: 1px dashed var(--line-soft) !important;
   transition: color 0.15s ease, background-color 0.15s ease;
 }
 
 .leaflet-control-zoom a:hover {
-  background: rgba(255, 255, 255, 0.08) !important;
-  color: #F8FAFC !important;
+  background: rgba(211, 198, 170, 0.08) !important;
+  color: var(--fg) !important;
 }
 
 .leaflet-popup-content-wrapper {
-  background: rgba(11, 15, 25, 0.95) !important;
-  color: #F8FAFC !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
-  border-radius: 14px !important;
-  backdrop-filter: blur(20px) !important;
+  background: rgba(30, 37, 40, 0.95) !important;
+  color: var(--fg) !important;
+  border: 1px dashed var(--line) !important;
+  border-radius: 4px !important;
+  backdrop-filter: blur(10px) !important;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7) !important;
   padding: 0 !important;
 }
 
 .leaflet-popup-content {
-  margin: 12px 16px !important;
+  margin: 10px 14px !important;
 }
 
 .leaflet-popup-tip {
-  background: rgba(11, 15, 25, 0.95) !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  background: rgba(30, 37, 40, 0.95) !important;
+  border: 1px dashed var(--line) !important;
+}
+
+.leaflet-tooltip {
+  background: rgba(30, 37, 40, 0.9) !important;
+  border: 1px dashed var(--line) !important;
+  color: var(--fg) !important;
+  border-radius: 3px !important;
+  box-shadow: none !important;
+  font-family: var(--mono);
+}
+.leaflet-tooltip-top:before,
+.leaflet-tooltip-bottom:before,
+.leaflet-tooltip-left:before,
+.leaflet-tooltip-right:before {
+  border: none;
 }
 
 /* Custom scrollbars */
@@ -109,23 +162,25 @@ body {
   background: transparent;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--bg3);
   border-radius: 9999px;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--bg4);
 }
 
 /* Emil Kowalski animation utilities */
 .btn-tactile {
-  transition: transform 140ms var(--ease-out), background-color 140ms var(--ease-out);
+  transition: transform 140ms var(--ease-out), background-color 140ms var(--ease-out),
+    color 140ms var(--ease-out), border-color 140ms var(--ease-out);
 }
 .btn-tactile:active {
   transform: scale(0.97);
 }
 
 .card-tactile {
-  transition: transform 120ms var(--ease-out), background-color 160ms var(--ease-out);
+  transition: transform 120ms var(--ease-out), background-color 160ms var(--ease-out),
+    border-color 160ms var(--ease-out);
 }
 .card-tactile:active {
   transform: scale(0.985);
@@ -165,14 +220,24 @@ body {
   animation: logCrossFade 220ms var(--ease-out) forwards;
 }
 
+/* Everforest status blink (stepped, no easing — matches landing .dot) */
+@keyframes everBlink {
+  50% {
+    opacity: 0.25;
+  }
+}
+.blink-step {
+  animation: everBlink 1.8s steps(2) infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .btn-tactile,
   .card-tactile,
   .anim-progress,
   .animate-slide-up-fade,
-  .animate-log-fade {
+  .animate-log-fade,
+  .blink-step {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
 }
-
