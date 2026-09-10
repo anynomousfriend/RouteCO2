@@ -56,7 +56,7 @@ export interface LiveFlightSummary {
 const DEFAULT_VAULT_ADDRESS: Address =
   (process.env.NEXT_PUBLIC_ARC_VAULT_ADDRESS as Address) ||
   (process.env.SKYROUTE_VAULT_ADDRESS as Address) ||
-  "0xb579e26C81FDf858a9A6a0F3CcAB497a70343c5d";
+  "0x469CA8E59ae25CBEEC2eA52617163E2396B9bdA1";
 
 /**
  * Executes a verified deterministic descent replay session for DLH400

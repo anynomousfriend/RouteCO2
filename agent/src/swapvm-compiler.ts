@@ -4,9 +4,23 @@
  * Compiles dynamic flight fuel-burn and emission-offset curves into SwapVM
  * bytecode instructions for 1inch Aqua App execution on Arc Testnet.
  * Conforms strictly to contracts/src/SwapVMRuleEngine.sol.
+ *
+ * Ground truth (github.com/1inch/swap-vm):
+ * - Canonical router 0x111111338c5091E8440b67B168bAe16a668AC0De on Ethereum/Base/
+ *   Optimism/Polygon/Arbitrum/Avalanche/BSC/Linea/Sonic/Unichain/Gnosis/zkSync/Cronos/
+ *   Monad/HyperEVM (NOT deployed on Arc 5042002 — Arc uses the local SwapVMRuleEngine
+ *   projection below).
+ * - Real bytecode format is [opcode_index][args_length][args_data] with instructions
+ *   _dynamicBalancesXD, _staticBalancesXD, _flatFeeAmountInXD, _flatFeeAmountOutXD,
+ *   _decayXD, _xycSwapXD. This compiler emits the Arc-local 1-byte compact projection:
+ *   0x01=_dynamicBalancesXD base allocation, 0x02=cruise/climb pricing curve,
+ *   0x03=_flatFeeAmountInXD carbon fee, 0x04=_decayXD waypoint/descent decay.
  */
 
 import type { Hex } from "viem";
+
+/** Canonical 1inch SwapVM router (supported chains above; Arc uses local projection) */
+export const SWAPVM_ROUTER_ADDRESS: Hex = "0x111111338c5091E8440b67B168bAe16a668AC0De";
 
 /** Base allocation from duration and hourly fuel burn */
 export const OP_DYNAMIC_BALANCES = 0x01;
@@ -32,12 +46,6 @@ export type SwapVMOpcode = (typeof VALID_OPCODES)[number];
 export interface SwapVMCompileOptions {
   includeDecay?: boolean;
   customOpcodes?: number[];
-}
-
-export interface SwapVMDecompileResult {
-  opcodes: number[];
-  valid: boolean;
-  hasBaseAllocation: boolean;
 }
 
 /**

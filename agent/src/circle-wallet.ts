@@ -4,16 +4,35 @@
  * Implements Circle Agent Wallet management, credential resolution,
  * contract target allowlisting (SkyRouteVault), and bounded daily/per-flight
  * spend guards for autonomous aviation carbon-offset settlements on Arc Testnet.
+ *
+ * Circle Developer-Controlled Wallets ground truth (developers.circle.com):
+ * - Server SDK: @circle-fin/developer-controlled-wallets,
+ *   initiateDeveloperControlledWalletsClient({ apiKey, entitySecret }).
+ * - Arc wallets: createWallets({ walletSetId, blockchains: ["ARC-TESTNET"], accountType }).
+ * - Gas Station (developer-sponsored gas): requires SCA wallets; Arc Testnet default
+ *   policy auto-sponsors qualifying SCA transactions (daily limit 50 USDC). See
+ *   agent/src/circle-developer-client.ts for transfer/polling helpers and the
+ *   Circle Paymaster (ARC-TESTNET) addresses for user-pays-USDC ERC-4337 flows.
+ * This class is the local policy/signer counterpart; Circle API calls live in
+ * circle-developer-client.ts and throw fatally when CIRCLE_API_KEY/ENTITY_SECRET
+ * are missing (no silent mock fallback).
  */
 
 import { type Address, type Hex, isAddress } from "viem";
 import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
+import type { CircleAccountType } from "./circle-developer-client.js";
 
 export interface CircleAgentWalletConfig {
   privateKey?: Hex;
   apiKey?: string;
   entitySecret?: string;
   address?: Address;
+  /** Circle Developer-Controlled Wallet ID (for API transfers/balance checks) */
+  walletId?: string;
+  /** Circle Wallet Set ID the wallet belongs to */
+  walletSetId?: string;
+  /** SCA enables Gas Station gasless flows; EOA is a plain signer. Defaults to SCA. */
+  accountType?: CircleAccountType;
   allowedContracts?: Address[];
   maxDailyBudgetUSDC?: number;
   maxPerFlightBudgetUSDC?: number;
@@ -23,7 +42,7 @@ export interface CircleAgentWalletConfig {
 export const DEFAULT_ALLOWED_VAULT: Address =
   (process.env.NEXT_PUBLIC_ARC_VAULT_ADDRESS as Address) ||
   (process.env.SKYROUTE_VAULT_ADDRESS as Address) ||
-  "0xb579e26C81FDf858a9A6a0F3CcAB497a70343c5d";
+  "0x469CA8E59ae25CBEEC2eA52617163E2396B9bdA1";
 
 export class CircleAgentWallet {
   private readonly privateKey?: Hex;
@@ -35,6 +54,12 @@ export class CircleAgentWallet {
 
   public readonly maxDailyBudgetUSDC: number;
   public readonly maxPerFlightBudgetUSDC: number;
+  /** Circle Developer-Controlled Wallet ID, when managed via Circle APIs */
+  public readonly walletId?: string;
+  /** Circle Wallet Set ID, when managed via Circle APIs */
+  public readonly walletSetId?: string;
+  /** SCA enables Gas Station gasless flows; EOA is a plain signer */
+  public readonly accountType: CircleAccountType;
   private dailySpendUSDC: number = 0;
   private lastResetTimestamp: number = Date.now();
 
@@ -52,6 +77,9 @@ export class CircleAgentWallet {
     this.privateKey = pk;
     this.apiKey = config.apiKey || process.env.CIRCLE_API_KEY;
     this.entitySecret = config.entitySecret || process.env.CIRCLE_ENTITY_SECRET;
+    this.walletId = config.walletId || process.env.CIRCLE_WALLET_ID;
+    this.walletSetId = config.walletSetId || process.env.CIRCLE_WALLET_SET_ID;
+    this.accountType = config.accountType || ((process.env.CIRCLE_ACCOUNT_TYPE as CircleAccountType) ?? "SCA");
 
     if (this.privateKey) {
       this.account = privateKeyToAccount(this.privateKey);
@@ -176,6 +204,26 @@ export class CircleAgentWallet {
    */
   public getRemainingDailyBudget(): number {
     return Math.max(0, this.maxDailyBudgetUSDC - this.dailySpendUSDC);
+  }
+
+  /**
+   * Returns true when this wallet can use Gas Station gasless flows:
+   * SCA account type (EOA cannot be sponsored).
+   */
+  public isGaslessCapable(): boolean {
+    return this.accountType === "SCA";
+  }
+
+  /**
+   * Asserts Circle API credentials exist; throws fatally otherwise (no mock fallback).
+   */
+  public assertCircleApiConfigured(): void {
+    if (!this.apiKey || !this.entitySecret) {
+      throw new Error(
+        "Circle API credentials missing: set CIRCLE_API_KEY and CIRCLE_ENTITY_SECRET in .env to use " +
+          "Developer-Controlled Wallets (see agent/src/circle-developer-client.ts)."
+      );
+    }
   }
 
   /**

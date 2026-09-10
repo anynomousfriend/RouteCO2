@@ -35,6 +35,8 @@ export const arcTestnet = defineChain({
 
 /**
  * Minimal ABI for SkyRouteVault settlement and manifest inspection
+ * (matches contracts/src/interfaces/ISkyRouteVault.sol; manifests returns
+ * callsign, aircraftCategory, treasury, maxBudgetUSDC, swapVmBytecode, strategyHash, settled)
  */
 export const SKYROUTE_VAULT_ABI = [
   {
@@ -59,6 +61,8 @@ export const SKYROUTE_VAULT_ABI = [
       { name: "aircraftCategory", type: "string" },
       { name: "treasury", type: "address" },
       { name: "maxBudgetUSDC", type: "uint256" },
+      { name: "swapVmBytecode", type: "bytes" },
+      { name: "strategyHash", type: "bytes32" },
       { name: "settled", type: "bool" },
     ],
     stateMutability: "view",
