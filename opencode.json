@@ -1,0 +1,12 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "lsp": {
+    "solidity": {
+      "command": ["npx", "-y", "@nomicfoundation/solidity-language-server@0.8.25", "--stdio"],
+      "extensions": [".sol"]
+    }
+  },
+  "permission": {
+    "lsp": "allow"
+  }
+}
