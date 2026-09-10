@@ -38,6 +38,10 @@ interface DescentTimelineBarProps {
   liveVerticalRateMps?: number;
   usdcCost?: number;
   settlementTxHash?: string;
+  playbackSpeed?: number;
+  onSpeedChange?: (speed: number) => void;
+  trackSource?: string;
+  trackLabel?: string;
 }
 
 export function DescentTimelineBar({
@@ -64,12 +68,44 @@ export function DescentTimelineBar({
   liveVerticalRateMps = 0,
   usdcCost = 5.0,
   settlementTxHash,
+  playbackSpeed = 1,
+  onSpeedChange,
+  trackSource,
+  trackLabel,
 }: DescentTimelineBarProps) {
   const currentAltFt = Math.round(currentAltitudeM * 3.28084);
   const currentFlightLevel = Math.round(currentAltFt / 100);
   const progressPercent = totalFrames > 1 ? (replayIndex / (totalFrames - 1)) * 100 : 0;
   const speedKts = Math.round(liveVelocityMps * 1.94384);
   const vrateFpm = Math.round(liveVerticalRateMps * 196.85);
+
+  // Two-step real-spend confirm for settlements >= $5 (first click arms, second broadcasts).
+  const [confirmArmed, setConfirmArmed] = React.useState(false);
+  const confirmTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  React.useEffect(() => {
+    return () => {
+      if (confirmTimer.current) clearTimeout(confirmTimer.current);
+    };
+  }, []);
+  React.useEffect(() => {
+    setConfirmArmed(false);
+  }, [isSettled, liveCallsign, replayIndex === 0]);
+  const needsConfirm = usdcCost >= 5 && !isSettled && !isSettling;
+  const handleTriggerClick = () => {
+    if (isSettled) {
+      onOpenCertificate();
+      return;
+    }
+    if (needsConfirm && !confirmArmed) {
+      setConfirmArmed(true);
+      if (confirmTimer.current) clearTimeout(confirmTimer.current);
+      confirmTimer.current = setTimeout(() => setConfirmArmed(false), 8000);
+      return;
+    }
+    if (confirmTimer.current) clearTimeout(confirmTimer.current);
+    setConfirmArmed(false);
+    onTriggerSettlement();
+  };
 
   return (
     <div
@@ -81,7 +117,7 @@ export function DescentTimelineBar({
           <button
             type="button"
             onClick={onTogglePlay}
-            title={isPlaying ? "Pause Descent Replay" : "Play Descent Replay"}
+            title={isPlaying ? "Pause Track Replay" : "Play Track Replay"}
             className="w-8 h-8 bg-[#a7c080] text-[#2d353b] hover:bg-[#dbbc7f] flex items-center justify-center active:scale-[0.92] transition-[transform,colors] duration-140 cursor-pointer"
           >
             {isPlaying ? (
@@ -111,6 +147,44 @@ export function DescentTimelineBar({
             <CheckCircle2 className="w-3.5 h-3.5 text-[#a7c080]" />
             <span>Touchdown</span>
           </button>
+          {/* Playback speed (demo-friendly fast-forward of recorded fixes) */}
+          {onSpeedChange && (
+            <div
+              className="flex items-center border border-dashed border-[#d3c6aa]/16"
+              title="Replay speed — recorded fixes play back faster for demos"
+            >
+              {[1, 2, 4, 8].map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => onSpeedChange(s)}
+                  className={`px-2 py-1.5 text-[10px] font-mono font-bold cursor-pointer transition-colors ${
+                    playbackSpeed === s
+                      ? "bg-[#a7c080] text-[#2d353b]"
+                      : "text-[#859289] hover:text-[#d3c6aa]"
+                  }`}
+                >
+                  {s}×
+                </button>
+              ))}
+            </div>
+          )}
+          {trackSource && trackSource !== "synthetic" && (
+            <span
+              title={trackLabel ? `Replaying ${trackLabel} — real recorded ADS-B fixes` : "Replaying real recorded ADS-B fixes"}
+              className="px-2 py-1.5 text-[9px] font-mono font-bold bg-[#7fbbb3]/15 text-[#7fbbb3] border border-dashed border-[#7fbbb3]/40"
+            >
+              RECORDED
+            </span>
+          )}
+          {trackSource === "synthetic" && (
+            <span
+              title="Physics fixture for development — not real telemetry"
+              className="px-2 py-1.5 text-[9px] font-mono font-bold bg-[#dbbc7f]/15 text-[#dbbc7f] border border-dashed border-[#dbbc7f]/40"
+            >
+              SYNTHETIC
+            </span>
+          )}
         </div>
       ) : (
         <div className="flex items-center gap-3 shrink-0">
@@ -255,13 +329,16 @@ export function DescentTimelineBar({
       <div className="relative group flex items-center gap-2 shrink-0">
         <button
           type="button"
-          onClick={isSettled ? onOpenCertificate : onTriggerSettlement}
+          onClick={handleTriggerClick}
           disabled={isSettling}
+          title="Broadcasts a real Arc Testnet transaction spending testnet USDC"
           className={`flex items-center gap-2 px-3.5 py-1.5 text-xs font-mono font-semibold active:scale-[0.96] transition-[transform,colors] duration-140 cursor-pointer border ${
             isSettled
               ? "bg-[#a7c080] text-[#2d353b] font-bold hover:bg-[#dbbc7f] border-[#a7c080]"
               : isSettling
               ? "bg-[#dbbc7f]/20 text-[#dbbc7f] border-dashed border-[#dbbc7f]/50 opacity-80 animate-pulse cursor-wait"
+              : confirmArmed
+              ? "bg-[#dbbc7f] text-[#2d353b] border-[#dbbc7f]"
               : "bg-[#d3c6aa] text-[#2d353b] hover:bg-[#dbbc7f] border-[#d3c6aa]"
           }`}
         >
@@ -284,6 +361,8 @@ export function DescentTimelineBar({
             </>
           ) : isSettling ? (
             <span>Settling on Arc...</span>
+          ) : confirmArmed ? (
+            <span>Confirm ${usdcCost.toFixed(2)} real USDC spend</span>
           ) : mode === "live" ? (
             <span>Settle Leg · ${usdcCost.toFixed(2)} USDC</span>
           ) : (

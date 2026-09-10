@@ -2,12 +2,13 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { Search, X, Plane, Radio, ShieldCheck, ArrowRight } from "lucide-react";
-import { REPLAY_SCENARIOS, type ReplayScenario } from "../lib/replay-scenarios";
+import type { PlayableTrack } from "../lib/replay-tracks";
 
 interface CommandSearchModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSelectScenario: (scenario: ReplayScenario, index: number) => void;
+  tracks: PlayableTrack[];
+  onSelectTrack: (track: PlayableTrack) => void;
   onSwitchMode: (mode: "replay" | "live") => void;
   currentMode: "replay" | "live";
 }
@@ -15,7 +16,8 @@ interface CommandSearchModalProps {
 export function CommandSearchModal({
   isOpen,
   onClose,
-  onSelectScenario,
+  tracks,
+  onSelectTrack,
   onSwitchMode,
   currentMode,
 }: CommandSearchModalProps) {
@@ -47,7 +49,7 @@ export function CommandSearchModal({
 
   if (!isOpen) return null;
 
-  const filteredScenarios = REPLAY_SCENARIOS.filter(
+  const filteredTracks = tracks.filter(
     (s) =>
       s.callsign.toLowerCase().includes(search.toLowerCase()) ||
       s.airline.toLowerCase().includes(search.toLowerCase()) ||
@@ -108,9 +110,9 @@ export function CommandSearchModal({
             <div className="flex items-center gap-2">
               <Plane className="w-4 h-4 text-[#dbbc7f]" />
               <div>
-                <div className="font-medium text-[#d3c6aa]">Touchdown Replay Engine</div>
+                <div className="font-medium text-[#d3c6aa]">Replay Recorded Tracks</div>
                 <div className="text-[11px] text-[#859289]">
-                  Deterministic ICAO wheels-down descent replay
+                  Real recorded ADS-B descents — bundled demo seed plus your watches
                 </div>
               </div>
             </div>
@@ -145,33 +147,51 @@ export function CommandSearchModal({
             )}
           </button>
 
-          {/* Scenarios */}
+          {/* Recorded replay tracks (bundled demo seed + user recordings) */}
           <div className="px-3 pt-3 pb-1 text-[10px] font-mono uppercase tracking-wider text-[#859289]">
-            Commercial Scenarios (ICAO Benchmarked)
+            Replay Tracks (Recorded ADS-B)
           </div>
-          {filteredScenarios.map((scenario, idx) => (
+          {filteredTracks.length === 0 && (
+            <div className="px-3 py-4 text-[11px] font-mono text-[#859289] leading-relaxed">
+              No recorded tracks yet. Watch a live flight on the globe to record
+              its path — it becomes replayable here after touchdown.
+            </div>
+          )}
+          {filteredTracks.map((track) => (
             <button
-              key={scenario.id}
+              key={track.id}
               type="button"
               onClick={() => {
-                const originalIndex = REPLAY_SCENARIOS.findIndex((s) => s.id === scenario.id);
-                onSelectScenario(scenario, originalIndex >= 0 ? originalIndex : idx);
+                onSelectTrack(track);
                 onClose();
               }}
               className="w-full flex items-center justify-between p-2.5 hover:bg-[#d3c6aa]/[0.06] transition-colors cursor-pointer text-left group"
             >
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 bg-[#1e2528] border border-dashed border-[#d3c6aa]/16 flex items-center justify-center font-mono text-xs font-bold text-[#dbbc7f]">
-                  {scenario.callsign.slice(0, 3)}
+                  {track.callsign.slice(0, 3)}
                 </div>
                 <div>
                   <div className="text-xs font-bold text-[#d3c6aa] flex items-center gap-1.5">
-                    <span>{scenario.callsign}</span>
+                    <span>{track.callsign}</span>
                     <span className="text-[#859289] font-normal">·</span>
-                    <span className="font-normal text-[#9daaa4]">{scenario.airline}</span>
+                    <span className="font-normal text-[#9daaa4]">{track.airline}</span>
+                    <span
+                      className={`px-1.5 py-0.5 text-[9px] font-mono font-bold ${
+                        track.source === "synthetic"
+                          ? "bg-[#dbbc7f]/15 text-[#dbbc7f] border border-dashed border-[#dbbc7f]/40"
+                          : "bg-[#7fbbb3]/15 text-[#7fbbb3] border border-dashed border-[#7fbbb3]/40"
+                      }`}
+                    >
+                      {track.source === "synthetic"
+                        ? "SYNTHETIC FIXTURE"
+                        : track.source === "bundled"
+                        ? "RECORDED · DEMO SEED"
+                        : `RECORDED · ${track.fixCount || 0} FIXES`}
+                    </span>
                   </div>
                   <div className="text-[11px] text-[#859289] font-mono">
-                    {scenario.originAirport} → {scenario.destinationAirport} ({scenario.destinationName}) · Runway {scenario.runway}
+                    {track.originAirport} → {track.destinationAirport} ({track.destinationName}) · Runway {track.runway}
                   </div>
                 </div>
               </div>

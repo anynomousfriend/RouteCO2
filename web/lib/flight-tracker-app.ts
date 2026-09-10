@@ -15,6 +15,10 @@ import * as Cesium from "cesium";
 import { FlightsCesiumLayer, AircraftMeta } from "./flight-layer";
 import { FlightTrailRenderer } from "./flight-trail";
 import { AdsbdbQueue, AircraftEnrichment } from "./adsbdb-queue";
+import {
+  MAX_FIXES_PER_TRACK,
+  type RecordedFix,
+} from "./watchlist-store";
 
 let egm96Module: any = null;
 
@@ -41,8 +45,12 @@ export async function getGeoidHeight(lat: number, lon: number): Promise<number> 
 export interface FlightTrackerCallbacks {
   onAircraftSelected?: (meta: AircraftMeta | null, enrichment?: AircraftEnrichment | null) => void;
   onAircraftTouchdown?: (meta: AircraftMeta) => void;
+  /** Fires once when a watched (not merely tracked) flight touches down. */
+  onWatchedTouchdown?: (key: string, meta: AircraftMeta) => void;
   onFlightsUpdated?: (airborneCount: number, landedCount: number) => void;
 }
+
+export type FollowMode = "top" | "chase";
 
 export class FlightTrackerApp {
   viewer: Cesium.Viewer;
@@ -50,11 +58,21 @@ export class FlightTrackerApp {
   trail: FlightTrailRenderer;
   enrichment: AdsbdbQueue;
   pollInterval: any = null;
+  followTicker: any = null;
   trackedIcao: string | null = null;
   callbacks: FlightTrackerCallbacks;
   maxAircraftLimit: number = 25;
   isFollowing: boolean = true;
+  /** Watchlist: keys (icao24 or callsign, lowercase) recorded every poll, pinned against pruning. */
+  watchedKeys: Set<string> = new Set();
+  private watchBuffers: Map<string, RecordedFix[]> = new Map();
+  private watchPrevGround: Map<string, boolean> = new Map();
+  private watchNotified: Set<string> = new Set();
+  /** Default follow framing. "top" = north-up map view pinned above the plane. */
+  followMode: FollowMode = "top";
   private isFlyingTo: boolean = false;
+  /** Timestamp until which camera moveStart events are programmatic (flyTo), not user drags. */
+  private suppressInterruptUntil: number = 0;
   private lastTrackedPos: Cesium.Cartesian3 | null = null;
   private removePreRender: (() => void) | null = null;
   private previousAltitudeMap = new Map<string, number>();
@@ -70,6 +88,33 @@ export class FlightTrackerApp {
   setMaxAircraftLimit(limit: number) {
     this.maxAircraftLimit = Math.max(5, Math.min(limit, 100));
     this.pruneExcessAircraft();
+  }
+
+  /** Starts recording fixes for a flight (idempotent). */
+  startWatch(key: string) {
+    const k = key.toLowerCase();
+    this.watchedKeys.add(k);
+    if (!this.watchBuffers.has(k)) this.watchBuffers.set(k, []);
+    this.watchNotified.delete(k);
+  }
+
+  /** Stops recording and returns the buffered fixes (for persistence). */
+  stopWatch(key: string): RecordedFix[] {
+    const k = key.toLowerCase();
+    this.watchedKeys.delete(k);
+    this.watchPrevGround.delete(k);
+    this.watchNotified.delete(k);
+    const buf = this.watchBuffers.get(k) || [];
+    this.watchBuffers.delete(k);
+    return buf;
+  }
+
+  getRecording(key: string): RecordedFix[] {
+    return this.watchBuffers.get(key.toLowerCase()) || [];
+  }
+
+  getWatchedKeys(): string[] {
+    return Array.from(this.watchedKeys);
   }
 
   private pruneExcessAircraft() {
@@ -112,9 +157,85 @@ export class FlightTrackerApp {
     // Hook into preRender for frame-by-frame camera follow and trail synchronization
     this.removePreRender = this.viewer.scene.preRender.addEventListener(() => this.onFrameTick());
 
+    // On-demand rendering ticker: while following or flying, evaluate motion and
+    // request frames explicitly (pairs with requestRenderMode for low-RAM machines).
+    this.followTicker = setInterval(() => {
+      if ((this.isFollowing && this.trackedIcao) || this.isFlyingTo) {
+        this.onFrameTick();
+        try {
+          this.viewer.scene.requestRender();
+        } catch {
+          // Viewer may be tearing down; ignore.
+        }
+      }
+    }, 150);
+
     // Initial fetch + 10s polling cadence
     await this.pollFlights();
     this.pollInterval = setInterval(() => this.pollFlights(), 10000);
+  }
+
+  /** True while a programmatic camera flight is in progress (user drags still count otherwise). */
+  public shouldIgnoreCameraInterrupt(): boolean {
+    return this.isFlyingTo || Date.now() < this.suppressInterruptUntil;
+  }
+
+  setFollowMode(mode: FollowMode) {
+    this.followMode = mode;
+    if (this.trackedIcao) {
+      const entry = this.layer.getAircraft(this.trackedIcao);
+      if (entry?.bb?.position) {
+        this.lastTrackedPos = Cesium.Cartesian3.clone(entry.bb.position);
+        this.frameFollowCamera(entry.bb.position, entry.meta.altitudeM || 3000);
+        try {
+          this.viewer.scene.requestRender();
+        } catch {
+          // Ignore teardown races.
+        }
+      }
+    }
+  }
+
+  /** Map-style height for top-down framing, scaled to aircraft altitude. */
+  private topFollowHeight(altitudeM: number): number {
+    return Math.min(Math.max(altitudeM * 3 + 15000, 20000), 90000);
+  }
+
+  /** Positions the camera per the active follow mode (top-down or chase delta-lock). */
+  private frameFollowCamera(planePos: Cesium.Cartesian3, altitudeM: number) {
+    if (this.followMode === "top") {
+      const enu = Cesium.Transforms.eastNorthUpToFixedFrame(planePos, Cesium.Ellipsoid.WGS84);
+      const height = this.topFollowHeight(altitudeM);
+      const camDest = Cesium.Matrix4.multiplyByPoint(
+        enu,
+        new Cesium.Cartesian3(0, 0, height),
+        new Cesium.Cartesian3()
+      );
+      this.viewer.camera.setView({
+        destination: camDest,
+        orientation: {
+          heading: 0.0,
+          pitch: Cesium.Math.toRadians(-90.0),
+          roll: 0.0,
+        },
+      });
+      this.lastTrackedPos = Cesium.Cartesian3.clone(planePos);
+      return;
+    }
+
+    // Chase mode: lock camera delta to airplane displacement (< 500m per frame).
+    if (this.lastTrackedPos) {
+      const delta = Cesium.Cartesian3.subtract(planePos, this.lastTrackedPos, new Cesium.Cartesian3());
+      const dMag = Cesium.Cartesian3.magnitude(delta);
+      if (dMag > 0.001 && dMag < 500) {
+        this.viewer.camera.position = Cesium.Cartesian3.add(
+          this.viewer.camera.position,
+          delta,
+          this.viewer.camera.position
+        );
+      }
+    }
+    this.lastTrackedPos = Cesium.Cartesian3.clone(planePos);
   }
 
   setFollowing(follow: boolean) {
@@ -124,6 +245,11 @@ export class FlightTrackerApp {
       if (entry?.bb?.position) {
         this.lastTrackedPos = Cesium.Cartesian3.clone(entry.bb.position);
       }
+    }
+    try {
+      this.viewer.scene.requestRender();
+    } catch {
+      // Ignore teardown races.
     }
   }
 
@@ -138,21 +264,9 @@ export class FlightTrackerApp {
     // 1. Anchor live trail directly to the plane's tail position every single frame
     this.trail.updateLiveHead(currentPlanePos);
 
-    // 2. Camera Tracking: Seamlessly lock camera delta to airplane displacement
+    // 2. Camera Tracking: hold framing per follow mode (skipped during flyTo transitions)
     if (this.isFollowing && !this.isFlyingTo) {
-      if (this.lastTrackedPos) {
-        const delta = Cesium.Cartesian3.subtract(currentPlanePos, this.lastTrackedPos, new Cesium.Cartesian3());
-        const dMag = Cesium.Cartesian3.magnitude(delta);
-        // Apply delta only for smooth continuous motion (< 500m per frame)
-        if (dMag > 0.001 && dMag < 500) {
-          this.viewer.camera.position = Cesium.Cartesian3.add(
-            this.viewer.camera.position,
-            delta,
-            this.viewer.camera.position
-          );
-        }
-      }
-      this.lastTrackedPos = Cesium.Cartesian3.clone(currentPlanePos);
+      this.frameFollowCamera(currentPlanePos, trackedEntry.meta.altitudeM || 3000);
     }
   }
 
@@ -201,6 +315,20 @@ export class FlightTrackerApp {
 
       // Target top N airplanes within user limit (default 25)
       const targetRows = validRows.slice(0, this.maxAircraftLimit);
+      // Watched flights are pinned into the working set even outside the density
+      // limit so their recordings never gap when they leave the camera area.
+      if (this.watchedKeys.size > 0) {
+        const included = new Set(targetRows.map((r: any[]) => String(r[0]).toLowerCase()));
+        for (const row of validRows) {
+          if (targetRows.length >= this.maxAircraftLimit + 10) break;
+          const rk = String(row[0]).toLowerCase();
+          const rcs = String(row[1] || "").trim().toLowerCase();
+          if (!included.has(rk) && (this.watchedKeys.has(rk) || (rcs && this.watchedKeys.has(rcs)))) {
+            targetRows.push(row);
+            included.add(rk);
+          }
+        }
+      }
       const keepIcaos = new Set<string>();
 
       for (const row of targetRows) {
@@ -275,6 +403,41 @@ export class FlightTrackerApp {
           fixTimeEpochMs: fixEpoch,
           callsign,
         });
+
+        // Watchlist recording: one fix per poll + touchdown transition detection.
+        const watchKey =
+          this.watchedKeys.has(icao24.toLowerCase())
+            ? icao24.toLowerCase()
+            : this.watchedKeys.has(callsign.toLowerCase())
+            ? callsign.toLowerCase()
+            : null;
+        if (watchKey) {
+          const buf = this.watchBuffers.get(watchKey) || [];
+          buf.push({
+            t: fixEpoch,
+            lat: latDeg,
+            lon: lonDeg,
+            altM: renderAltitudeM,
+            velMps: Number.isFinite(velocity) ? Number(velocity) : 0,
+            vsiMps: Number.isFinite(verticalRate) ? Number(verticalRate) : 0,
+            trackDeg: Number.isFinite(trueTrack) ? Number(trueTrack) : 0,
+            onGround: isGround,
+          });
+          if (buf.length > MAX_FIXES_PER_TRACK) {
+            buf.splice(0, buf.length - MAX_FIXES_PER_TRACK);
+          }
+          this.watchBuffers.set(watchKey, buf);
+
+          const wasGround = this.watchPrevGround.get(watchKey) ?? false;
+          if (!wasGround && isGround && !this.watchNotified.has(watchKey)) {
+            this.watchNotified.add(watchKey);
+            const entry = this.layer.getAircraft(icao24);
+            if (entry) {
+              this.callbacks.onWatchedTouchdown?.(watchKey, entry.meta);
+            }
+          }
+          this.watchPrevGround.set(watchKey, isGround);
+        }
       }
 
       // Prune any aircraft no longer in the visible limited set
@@ -291,6 +454,13 @@ export class FlightTrackerApp {
             this.trail.setTrailPositions(positions);
           }
         }
+      }
+
+      // On-demand rendering: exactly one explicit frame per poll (pairs with requestRenderMode).
+      try {
+        this.viewer.scene.requestRender();
+      } catch {
+        // Viewer may be tearing down; ignore.
       }
     } catch (err) {
       console.warn("[FlightTrackerApp] Poll error:", err);
@@ -423,40 +593,53 @@ export class FlightTrackerApp {
       this.trail.updateLiveHead(entry.bb.position);
     }
 
-    // Cinematic chase-cam view behind and above the aircraft
+    // Camera framing per active follow mode (top-down map view by default)
     const planePos =
       entry.bb?.position ||
       Cesium.Cartesian3.fromDegrees(entry.meta.lon, entry.meta.lat, entry.meta.altitudeM || 3000);
     const alt = entry.meta.altitudeM || 3000;
     const courseDeg = entry.tracker.displayCourse || entry.meta.trueTrackDeg || 0;
     const headingRad = Cesium.Math.toRadians(courseDeg);
-    const pitchRad = Cesium.Math.toRadians(-20.0); // 20° downward chase perspective
-    // Range scaled to aircraft speed and altitude for optimal framing
-    const followRange = Math.min(Math.max(alt * 0.22 + 1800, 2500), 5500);
 
-    // Position camera behind the aircraft along its flight heading
-    const behindHeading = headingRad + Math.PI;
-    const hDist = followRange * Math.cos(pitchRad);
-    const vDist = -followRange * Math.sin(pitchRad);
+    let camDest: Cesium.Cartesian3;
+    let orientation: { heading: number; pitch: number; roll: number };
+    if (this.followMode === "top") {
+      const enu = Cesium.Transforms.eastNorthUpToFixedFrame(planePos, Cesium.Ellipsoid.WGS84);
+      camDest = Cesium.Matrix4.multiplyByPoint(
+        enu,
+        new Cesium.Cartesian3(0, 0, this.topFollowHeight(alt)),
+        new Cesium.Cartesian3()
+      );
+      orientation = { heading: 0.0, pitch: Cesium.Math.toRadians(-90.0), roll: 0.0 };
+    } else {
+      // Cinematic chase-cam view behind and above the aircraft
+      const pitchRad = Cesium.Math.toRadians(-20.0); // 20° downward chase perspective
+      // Range scaled to aircraft speed and altitude for optimal framing
+      const followRange = Math.min(Math.max(alt * 0.22 + 1800, 2500), 5500);
 
-    const enu = Cesium.Transforms.eastNorthUpToFixedFrame(planePos, Cesium.Ellipsoid.WGS84);
-    const offsetLocal = new Cesium.Cartesian3(
-      Math.sin(behindHeading) * hDist,
-      Math.cos(behindHeading) * hDist,
-      vDist
-    );
-    const camDest = Cesium.Matrix4.multiplyByPoint(enu, offsetLocal, new Cesium.Cartesian3());
+      // Position camera behind the aircraft along its flight heading
+      const behindHeading = headingRad + Math.PI;
+      const hDist = followRange * Math.cos(pitchRad);
+      const vDist = -followRange * Math.sin(pitchRad);
+
+      const enu = Cesium.Transforms.eastNorthUpToFixedFrame(planePos, Cesium.Ellipsoid.WGS84);
+      const offsetLocal = new Cesium.Cartesian3(
+        Math.sin(behindHeading) * hDist,
+        Math.cos(behindHeading) * hDist,
+        vDist
+      );
+      camDest = Cesium.Matrix4.multiplyByPoint(enu, offsetLocal, new Cesium.Cartesian3());
+      orientation = { heading: headingRad, pitch: pitchRad, roll: 0.0 };
+    }
 
     this.isFlyingTo = true;
     this.lastTrackedPos = null;
+    // Suppress user-drag interrupt detection for the flight duration + settle buffer.
+    this.suppressInterruptUntil = Date.now() + 1800;
 
     this.viewer.camera.flyTo({
       destination: camDest,
-      orientation: {
-        heading: headingRad,
-        pitch: pitchRad,
-        roll: 0.0,
-      },
+      orientation,
       duration: 1.4,
       complete: () => {
         this.isFlyingTo = false;
@@ -498,6 +681,10 @@ export class FlightTrackerApp {
     if (this.pollInterval) {
       clearInterval(this.pollInterval);
       this.pollInterval = null;
+    }
+    if (this.followTicker) {
+      clearInterval(this.followTicker);
+      this.followTicker = null;
     }
     if (this.removePreRender) {
       this.removePreRender();

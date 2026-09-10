@@ -26,11 +26,14 @@ import {
 } from "lucide-react";
 
 interface CesiumGlobeViewerProps {
-  onSelectFlight?: (meta: AircraftMeta | null, enrichment: AircraftEnrichment | null) => void;
+  onSelectFlight?: (meta: AircraftMeta | null, enrichment?: AircraftEnrichment | null) => void;
   onArmedTouchdown?: (meta: AircraftMeta) => void;
+  onWatchedTouchdown?: (key: string, meta: AircraftMeta) => void;
   selectedIcao?: string | null;
   armedIcao?: string | null;
   onToggleArm?: (icao: string) => void;
+  watchedKeys?: string[];
+  onToggleWatch?: (callsign: string) => void;
   onSwitchToLandedTab?: () => void;
   landedCount?: number;
   initialAircraftLimit?: number;
@@ -40,9 +43,12 @@ interface CesiumGlobeViewerProps {
 export default function CesiumGlobeViewer({
   onSelectFlight,
   onArmedTouchdown,
+  onWatchedTouchdown,
   selectedIcao,
   armedIcao,
   onToggleArm,
+  watchedKeys = [],
+  onToggleWatch,
   onSwitchToLandedTab,
   landedCount = 0,
   initialAircraftLimit = 25,
@@ -58,6 +64,7 @@ export default function CesiumGlobeViewer({
   const [airframe, setAirframe] = useState<AirframeProfile | null>(null);
   const [flightCounts, setFlightCounts] = useState({ airborne: 0, landed: 0 });
   const [isFollowing, setIsFollowing] = useState(true);
+  const [followMode, setFollowMode] = useState<"top" | "chase">("top");
   const [aircraftLimit, setAircraftLimit] = useState(initialAircraftLimit);
 
   // Setup client mount gate
@@ -73,9 +80,10 @@ export default function CesiumGlobeViewer({
     (window as any).CESIUM_BASE_URL = "/cesium";
 
     // ESRI Dark Gray Canvas tiles for sleek night avionics radar aesthetic (zero-key, high-availability)
+    // maximumLevel 12 + small tile cache keeps memory flat on 8GB machines.
     const darkImagery = new Cesium.UrlTemplateImageryProvider({
       url: "https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
-      maximumLevel: 16,
+      maximumLevel: 12,
     });
 
     const viewer = new Cesium.Viewer(containerRef.current, {
@@ -92,8 +100,18 @@ export default function CesiumGlobeViewer({
       selectionIndicator: false,
       creditContainer: document.createElement("div"), // Hide attribution clutter
       scene3DOnly: true,
-      requestRenderMode: false,
+      // On-demand rendering: frames only on data updates, camera moves, or follow ticks.
+      requestRenderMode: true,
+      maximumRenderTimeChange: Infinity,
     });
+
+    // Low-RAM tuning: cap render resolution at 1x and shrink the tile cache.
+    try {
+      viewer.resolutionScale = Math.min(window.devicePixelRatio || 1, 1);
+      viewer.scene.globe.tileCacheSize = 50;
+    } catch {
+      // Non-fatal on exotic WebGL implementations.
+    }
 
     viewer.scene.backgroundColor = Cesium.Color.fromCssColorString("#1e2528");
     viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString("#1e2528");
@@ -126,6 +144,9 @@ export default function CesiumGlobeViewer({
       onAircraftTouchdown: (meta) => {
         onArmedTouchdown?.(meta);
       },
+      onWatchedTouchdown: (key, meta) => {
+        onWatchedTouchdown?.(key, meta);
+      },
       onFlightsUpdated: (airborne, landed) => {
         setFlightCounts({ airborne, landed });
       },
@@ -133,6 +154,18 @@ export default function CesiumGlobeViewer({
 
     tracker.setMaxAircraftLimit(aircraftLimit);
     tracker.start();
+
+    // User drag/orbit/zoom releases the follow lock so the plane never fights
+    // the camera (programmatic flyTo flights are ignored via the tracker flag).
+    const releaseOnUserDrag = () => {
+      const app = trackerAppRef.current;
+      if (!app || app.shouldIgnoreCameraInterrupt()) return;
+      if (app.isFollowing && app.trackedIcao) {
+        app.setFollowing(false);
+        setIsFollowing(false);
+      }
+    };
+    viewer.scene.camera.moveStart.addEventListener(releaseOnUserDrag);
 
     viewerRef.current = viewer;
     trackerAppRef.current = tracker;
@@ -145,6 +178,11 @@ export default function CesiumGlobeViewer({
       if (typeof window !== "undefined") {
         delete (window as any).__flightTrackerApp;
         delete (window as any).__cesiumViewer;
+      }
+      try {
+        viewer.scene.camera.moveStart.removeEventListener(releaseOnUserDrag);
+      } catch {
+        // Listener may already be gone during teardown.
       }
       tracker.stop();
       viewer.destroy();
@@ -165,6 +203,7 @@ export default function CesiumGlobeViewer({
     if (!trackerAppRef.current) return;
     if (selectedIcao && selectedIcao.toLowerCase() !== trackerAppRef.current.trackedIcao?.toLowerCase()) {
       setIsFollowing(true);
+      trackerAppRef.current.setFollowMode(followMode);
       trackerAppRef.current.trackAircraft(selectedIcao);
     } else if (!selectedIcao && trackerAppRef.current.trackedIcao) {
       setIsFollowing(false);
@@ -174,6 +213,16 @@ export default function CesiumGlobeViewer({
       setAirframe(null);
     }
   }, [selectedIcao]);
+
+  // Sync armed-autosettle marker onto globe billboards
+  useEffect(() => {
+    trackerAppRef.current?.layer.setArmed(armedIcao ?? null);
+  }, [armedIcao, isMounted]);
+
+  // Sync watchlist recording markers onto globe billboards
+  useEffect(() => {
+    trackerAppRef.current?.layer.setWatched(watchedKeys);
+  }, [watchedKeys, isMounted]);
 
   // Compute live ICAO emissions if active aircraft exists
   const liveEmissions = activeMeta && airframe
@@ -189,6 +238,13 @@ export default function CesiumGlobeViewer({
     : null;
 
   const isArmed = activeMeta && armedIcao === activeMeta.callsign.toLowerCase();
+  const isWatched =
+    activeMeta &&
+    watchedKeys.some(
+      (k) =>
+        k.toLowerCase() === activeMeta.icao24?.toLowerCase() ||
+        k.toLowerCase() === activeMeta.callsign.toLowerCase()
+    );
 
   const handleResetCamera = () => {
     if (!viewerRef.current) return;
@@ -213,7 +269,19 @@ export default function CesiumGlobeViewer({
     setIsFollowing(nextFollow);
     trackerAppRef.current.setFollowing(nextFollow);
     if (nextFollow && activeMeta.icao24) {
+      trackerAppRef.current.setFollowMode(followMode);
       trackerAppRef.current.trackAircraft(activeMeta.icao24);
+    }
+  };
+
+  const handleCycleFollowMode = () => {
+    const next = followMode === "top" ? "chase" : "top";
+    setFollowMode(next);
+    if (trackerAppRef.current && activeMeta) {
+      trackerAppRef.current.setFollowMode(next);
+      if (isFollowing) {
+        trackerAppRef.current.setFollowing(true);
+      }
     }
   };
 
@@ -303,14 +371,25 @@ export default function CesiumGlobeViewer({
         {activeMeta && (
           <button
             onClick={handleToggleFollow}
+            title={isFollowing ? "Following — drag the globe to look around (releases lock)" : "Re-lock tracking on this aircraft"}
             className={`flex items-center gap-1.5 px-3 py-1.5 backdrop-blur-md border text-xs font-mono transition-[transform,opacity] duration-140 active:scale-95 ${
               isFollowing
                 ? "bg-[#a7c080]/20 border-dashed border-[#a7c080]/50 text-[#a7c080]"
-                : "bg-[#1e2528]/90 border-dashed border-[#d3c6aa]/16 text-[#9daaa4] hover:text-[#d3c6aa]"
+                : "bg-[#1e2528]/90 border-dashed border-[#dbbc7f]/50 text-[#dbbc7f] hover:text-[#d3c6aa] animate-pulse"
             }`}
           >
             <Crosshair className="w-3.5 h-3.5" />
-            <span>{isFollowing ? "Tracking Lock" : "Free Cam"}</span>
+            <span>{isFollowing ? "Tracking Lock" : "Re-lock Tracking"}</span>
+          </button>
+        )}
+        {activeMeta && isFollowing && (
+          <button
+            onClick={handleCycleFollowMode}
+            title={followMode === "top" ? "Top-down map view — switch to chase cam" : "Chase cam — switch to top-down map view"}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1e2528]/90 backdrop-blur-md border border-dashed border-[#d3c6aa]/16 text-xs font-mono text-[#9daaa4] hover:text-[#d3c6aa] hover:border-[#a7c080]/50 transition-[transform,opacity] duration-140 active:scale-95"
+          >
+            <Compass className="w-3.5 h-3.5 text-[#a7c080]" />
+            <span>{followMode === "top" ? "Top View" : "Chase View"}</span>
           </button>
         )}
       </div>
@@ -433,6 +512,22 @@ export default function CesiumGlobeViewer({
 
           {/* Action Trigger Row */}
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => onToggleWatch?.(activeMeta.callsign)}
+              title={
+                isWatched
+                  ? "Stop recording this flight's path"
+                  : "Record this flight's path — replay it after landing, then settle manually"
+              }
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 font-mono text-xs font-semibold transition-[transform,opacity] duration-140 active:scale-[0.98] border-dashed ${
+                isWatched
+                  ? "bg-[#7fbbb3]/20 border-[#7fbbb3] text-[#7fbbb3] hover:bg-[#7fbbb3]/30"
+                  : "bg-[#7fbbb3]/10 border-[#7fbbb3]/25 text-[#7fbbb3] hover:bg-[#7fbbb3]/20"
+              }`}
+            >
+              <Radio className={`w-3.5 h-3.5 ${isWatched ? "animate-pulse" : ""}`} />
+              <span>{isWatched ? "Watching Path" : "Watch Flight"}</span>
+            </button>
             <button
               onClick={() => onToggleArm?.(activeMeta.callsign.toLowerCase())}
               className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 font-mono text-xs font-semibold transition-[transform,opacity] duration-140 active:scale-[0.98] border-dashed ${

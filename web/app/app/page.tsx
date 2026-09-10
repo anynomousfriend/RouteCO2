@@ -7,11 +7,24 @@ import { useFlightSessionDelegation } from "@/lib/privy-signers";
 import { isSessionSignerConfigured } from "@/lib/privy-config";
 import { toast } from "sonner";
 import {
-  REPLAY_SCENARIOS,
-  type ReplayScenario,
   type AircraftCategory,
   type LiveFlightSummary,
 } from "@/lib/replay-scenarios";
+import {
+  loadBundledTrack,
+  recordedToTrack,
+  syntheticFixtureTracks,
+  type PlayableTrack,
+} from "@/lib/replay-tracks";
+import {
+  hashRecording,
+  loadWatchedFlights,
+  observedSeconds as observedSpanSeconds,
+  removeWatchedFlight,
+  saveWatchedFlight,
+  type RecordedFix,
+  type WatchedFlight,
+} from "@/lib/watchlist-store";
 import { NavigationDock } from "@/components/NavigationDock";
 import { FlightMasterCard } from "@/components/FlightMasterCard";
 import { DescentTimelineBar } from "@/components/DescentTimelineBar";
@@ -85,8 +98,16 @@ export default function FlightOperationsConsole() {
   // 3D Globe vs 2D Radar Engine (Default: "3d")
   const [mapEngine, setMapEngine] = useState<"3d" | "2d">("3d");
   const [armedFlightCallsign, setArmedFlightCallsign] = useState<string | null>(null);
+  const armTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [landedFlights, setLandedFlights] = useState<LandedFlightRecord[]>(INITIAL_LANDED_FLIGHTS);
   const landedPendingCount = landedFlights.filter((f) => f.status === "PENDING").length;
+
+  const clearArmTimer = () => {
+    if (armTimeout.current) {
+      clearTimeout(armTimeout.current);
+      armTimeout.current = null;
+    }
+  };
 
   useEffect(() => {
     const stored = getStoredSettledFlights();
@@ -95,18 +116,59 @@ export default function FlightOperationsConsole() {
     }
   }, []);
 
-  const handleToggleArmSettlement = (callsign: string) => {
-    if (armedFlightCallsign === callsign.toLowerCase()) {
-      setArmedFlightCallsign(null);
+  useEffect(() => {
+    return () => clearArmTimer();
+  }, []);
+
+  const disarmSettlement = (silent = false) => {
+    clearArmTimer();
+    setArmedFlightCallsign(null);
+    if (!silent) {
       toast.info("Settlement Trigger Disarmed", {
-        description: `Automated touchdown settlement disabled for ${callsign.toUpperCase()}.`,
-      });
-    } else {
-      setArmedFlightCallsign(callsign.toLowerCase());
-      toast.success("Settlement Trigger Armed!", {
-        description: `Watcher active: When ${callsign.toUpperCase()} touches down, on-chain retirement will execute automatically on Arc Testnet.`,
+        description: "Automated touchdown watch disabled.",
       });
     }
+  };
+
+  const handleToggleArmSettlement = (callsign: string) => {
+    const key = callsign.toLowerCase();
+    if (armedFlightCallsign === key) {
+      disarmSettlement();
+      return;
+    }
+    // Eligibility: the flight must be a live airborne radar track. Arming an
+    // already-landed (or unknown) contact would wait forever with no feedback.
+    const live = liveFlights.find(
+      (f) => f.callsign.toLowerCase() === key || f.icao24.toLowerCase() === key
+    );
+    if (!live) {
+      toast.error("Cannot Arm Settlement", {
+        description: `${callsign.toUpperCase()} is not on live radar. Select a tracked airborne flight first.`,
+      });
+      return;
+    }
+    if (live.onGround) {
+      toast.error("Cannot Arm Settlement", {
+        description: `${live.callsign.toUpperCase()} is already on the ground. Arm an airborne flight, or settle it directly from the Landed queue.`,
+      });
+      return;
+    }
+    clearArmTimer();
+    setArmedFlightCallsign(key);
+    // Timeout: an armed watch that never sees touchdown disarms itself loudly
+    // instead of waiting forever (lost radar contact, diverted flight, tab left open).
+    armTimeout.current = setTimeout(() => {
+      setArmedFlightCallsign(null);
+      armTimeout.current = null;
+      toast.warning("Settlement Watch Expired", {
+        description: `No touchdown detected for ${live.callsign.toUpperCase()} within 15 minutes. Watch disarmed — re-arm to continue.`,
+        duration: 10000,
+      });
+    }, 15 * 60 * 1000);
+    toast.success("Settlement Trigger Armed!", {
+      description: `Watcher active: when ${live.callsign.toUpperCase()} touches down, on-chain retirement executes automatically on Arc Testnet. Track it in the Landed tab under WATCHING.`,
+      duration: 8000,
+    });
   };
 
   const handleArmedTouchdown = (meta: any) => {
@@ -118,9 +180,140 @@ export default function FlightOperationsConsole() {
       toast.info(`Touchdown Confirmed: ${meta.callsign}`, {
         description: `Autonomous agent triggering verified carbon offset settlement on Arc Testnet...`,
       });
+      clearArmTimer();
       triggerWheelsDownSettlement(meta);
       setArmedFlightCallsign(null);
     }
+  };
+
+  // ---- Flight Watchlist: record path → land → replay → manual settle ----
+  // Watching and armed auto-settle are mutually exclusive per flight: a manual
+  // review intent (watch) always wins over autonomous settlement (arm).
+  const persistWatchList = (list: WatchedFlight[]) => {
+    try {
+      for (const w of list) saveWatchedFlight(w);
+    } catch (err) {
+      toast.error("Recording Storage Full", {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    }
+    rebuildRecordedTracks(list);
+  };
+
+  const handleToggleWatch = (callsign: string) => {
+    const key = callsign.toLowerCase();
+    const existing = watched.find((w) => w.key === key);
+    if (existing) {
+      // Stop watching. Keep the recording if it has fixes (manual-clear retention).
+      if (typeof window !== "undefined" && (window as any).__flightTrackerApp) {
+        (window as any).__flightTrackerApp.stopWatch(key);
+      }
+      if (existing.fixes.length >= 2 || existing.status === "LANDED_RECORDED") {
+        toast.info("Watch Stopped — Recording Kept", {
+          description: `${existing.callsign} kept with ${existing.fixes.length} recorded fixes. Delete it explicitly to remove.`,
+        });
+      } else {
+        removeWatchedFlight(key);
+        const next = watched.filter((w) => w.key !== key);
+        rebuildRecordedTracks(next);
+        toast.info("Watch Stopped", {
+          description: `${existing.callsign} had too few fixes to keep; removed.`,
+        });
+      }
+      return;
+    }
+    const live = liveFlights.find(
+      (f) => f.callsign.toLowerCase() === key || f.icao24.toLowerCase() === key
+    );
+    if (!live) {
+      toast.error("Cannot Watch Flight", {
+        description: `${callsign.toUpperCase()} is not on live radar. Select a tracked flight first.`,
+      });
+      return;
+    }
+    if (live.onGround) {
+      toast.error("Cannot Watch Flight", {
+        description: `${live.callsign.toUpperCase()} is already on the ground — settle it from the Landed queue instead.`,
+      });
+      return;
+    }
+    if (armedFlightCallsign === live.callsign.toLowerCase()) {
+      disarmSettlement(true);
+      toast.info("Auto-Settle Disarmed", {
+        description: `Manual watch intent wins: ${live.callsign.toUpperCase()} will no longer auto-settle.`,
+      });
+    }
+    const entry: WatchedFlight = {
+      key: (live.icao24 || live.callsign).toLowerCase(),
+      icao24: (live.icao24 || "").toLowerCase(),
+      callsign: live.callsign.toUpperCase(),
+      equipmentType: live.equipmentType,
+      originCountry: live.originCountry,
+      watchStartedAt: Date.now(),
+      status: "WATCHING",
+      fixes: [],
+    };
+    if (typeof window !== "undefined" && (window as any).__flightTrackerApp) {
+      (window as any).__flightTrackerApp.startWatch(entry.key);
+    }
+    const next = [entry, ...watched.filter((w) => w.key !== entry.key)];
+    persistWatchList(next);
+    toast.success("Watching Flight Path", {
+      description: `Recording ${entry.callsign} every radar poll. It stays pinned even off-camera; replay unlocks at touchdown.`,
+      duration: 8000,
+    });
+  };
+
+  const handleWatchedTouchdown = (key: string) => {
+    const w = watched.find((x) => x.key === key.toLowerCase());
+    if (!w || w.status === "LANDED_RECORDED") return;
+    let fixes: RecordedFix[] = w.fixes;
+    if (typeof window !== "undefined" && (window as any).__flightTrackerApp) {
+      const live = (window as any).__flightTrackerApp.getRecording(key) as RecordedFix[];
+      if (live.length > fixes.length) fixes = live;
+    }
+    const landed: WatchedFlight = { ...w, status: "LANDED_RECORDED", landedAt: Date.now(), fixes };
+    const next = watched.map((x) => (x.key === landed.key ? landed : x));
+    persistWatchList(next);
+    // Inject into the Landed queue as a replayable PENDING record.
+    // Direct settle is disabled for these cards (see queue): the flow is
+    // replay → verify → settle from the console, which prices the observed track.
+    const observed = observedSpanSeconds(landed);
+    setLandedFlights((prev) => {
+      if (prev.some((f) => f.id === `rec-${landed.key}`)) return prev;
+      const rec: LandedFlightRecord = {
+        id: `rec-${landed.key}`,
+        callsign: landed.callsign,
+        icao24: landed.icao24,
+        operator: landed.originCountry ? `${landed.originCountry} Recorded Track` : "Recorded Live Track",
+        origin: "Observed segment",
+        destination: "Touchdown (recorded)",
+        airframe: AIRFRAME_PROFILES.A320,
+        landedAt: "Just now (recorded)",
+        airborneSeconds: observed,
+        distanceKm: 0,
+        estimatedAirborne: true,
+        estimationMethod: "recorded-partial-segment",
+        estimate: {
+          callsign: landed.callsign,
+          icao24: landed.icao24,
+          airframe: AIRFRAME_PROFILES.A320,
+          airborneSeconds: observed,
+          totalFuelBurnKg: 0,
+          totalCo2Kg: 0,
+          usdcCost: 0,
+          usdcAmountMicro: "0",
+          swapVmBytecode: "0x01020304",
+        },
+          status: "PENDING",
+        recordingAttached: true,
+      };
+      return [rec, ...prev];
+    });
+    toast.success(`Touchdown Recorded: ${landed.callsign}`, {
+      description: `Path frozen with ${fixes.length} fixes over ${Math.round(observed / 60)} min. Open its card, replay, verify, then settle manually.`,
+      duration: 10000,
+    });
   };
 
   // Live Flights State
@@ -128,11 +321,60 @@ export default function FlightOperationsConsole() {
   const [selectedFlight, setSelectedFlight] = useState<LiveFlightSummary | null>(null);
   const [isLiveLoading, setIsLiveLoading] = useState(false);
 
-  // Multi-Flight Replay Scenarios (Category 4)
-  const [selectedScenarioIndex, setSelectedScenarioIndex] = useState(0);
-  const activeScenario: ReplayScenario =
-    REPLAY_SCENARIOS[selectedScenarioIndex] || REPLAY_SCENARIOS[0];
-  const activeReplayFrames = activeScenario.frames;
+  // Replay tracks: bundled demo seed + user-recorded live tracks
+  // (+ synthetic fixtures only with ?dev-synthetic=1). Replaces the old
+  // static scenario list — every replayable track is real recorded ADS-B.
+  const [playableTracks, setPlayableTracks] = useState<PlayableTrack[]>([]);
+  const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const activeTrack: PlayableTrack | null =
+    playableTracks.find((t) => t.id === selectedTrackId) || playableTracks[0] || null;
+  const activeReplayFrames = activeTrack?.frames || [];
+
+  // Watchlist: live flights under path recording (globe watch → land → replay → settle)
+  const [watched, setWatched] = useState<WatchedFlight[]>(() => loadWatchedFlights());
+  const watchedKeys = useMemo(() => watched.map((w) => w.key), [watched]);
+
+  // Load bundled demo seed once, then rebuild the track list whenever
+  // recordings change. Synthetic fixtures only behind the dev flag.
+  useEffect(() => {
+    let cancelled = false;
+    loadBundledTrack().then((bundled) => {
+      if (cancelled) return;
+      const recorded = loadWatchedFlights()
+        .filter((w) => w.status === "LANDED_RECORDED")
+        .map((w) => recordedToTrack(w, "recorded"))
+        .filter((t): t is PlayableTrack => t !== null);
+      const tracks = [...(bundled ? [bundled] : []), ...recorded, ...syntheticFixtureTracks()];
+      setPlayableTracks(tracks);
+      setSelectedTrackId((prev) => prev || tracks[0]?.id || null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const rebuildRecordedTracks = (list: WatchedFlight[]) => {
+    setWatched(list);
+    const recorded = list
+      .filter((w) => w.status === "LANDED_RECORDED")
+      .map((w) => recordedToTrack(w, "recorded"))
+      .filter((t): t is PlayableTrack => t !== null);
+    setPlayableTracks((prev) => {
+      const rest = prev.filter((t) => t.source !== "recorded");
+      const bundled = rest.filter((t) => t.source === "bundled");
+      const synthetic = rest.filter((t) => t.source === "synthetic");
+      return [...bundled, ...recorded, ...synthetic];
+    });
+  };
+
+  // Keep selection valid as the track list changes (bundle load, new recordings).
+  useEffect(() => {
+    if (!selectedTrackId || !playableTracks.some((t) => t.id === selectedTrackId)) {
+      const first = playableTracks[0]?.id || null;
+      if (first !== selectedTrackId) setSelectedTrackId(first);
+    }
+  }, [playableTracks, selectedTrackId]);
 
   // Replay Playback State
   const [replayIndex, setReplayIndex] = useState(0);
@@ -293,15 +535,15 @@ export default function FlightOperationsConsole() {
   const activeAltitude = activeData?.baroAltitudeMeters ?? 0;
   const activeVelocity = activeData?.velocityMps ?? 0;
 
-  // Derive category and hourly burn for live flight vs replay scenario
+  // Derive category and hourly burn for live flight vs replay track
   const liveCategory: AircraftCategory = useMemo(() => {
-    if (mode === "replay") return activeScenario.category;
+    if (mode === "replay") return activeTrack?.category || "NARROW_BODY";
     const equip = (selectedFlight?.equipmentType || "").toUpperCase();
     if (equip.includes("A380") || equip.includes("B747") || equip.includes("A340") || equip.includes("B77W")) return "HEAVY";
     if (equip.includes("A350") || equip.includes("B777") || equip.includes("B787") || equip.includes("A330") || equip.includes("A339")) return "WIDE_BODY";
     if (equip.includes("E190") || equip.includes("E195") || equip.includes("CRJ") || equip.includes("AT7") || equip.includes("DH8")) return "REGIONAL";
     return "NARROW_BODY";
-  }, [mode, activeScenario.category, selectedFlight?.equipmentType]);
+  }, [mode, activeTrack?.category, selectedFlight?.equipmentType]);
 
   const liveHourlyBurn = useMemo(() => {
     switch (liveCategory) {
@@ -313,22 +555,22 @@ export default function FlightOperationsConsole() {
     }
   }, [liveCategory]);
 
-  const hourlyBurn = mode === "replay" ? activeScenario.hourlyBurnKg : liveHourlyBurn;
+  const hourlyBurn = mode === "replay" ? (activeTrack?.hourlyBurnKg || 2400) : liveHourlyBurn;
 
   const airborneSeconds =
     mode === "replay"
-      ? activeScenario.plannedAirborneSeconds
+      ? (activeTrack?.plannedAirborneSeconds || 0)
       : 3600;
 
   const fuelBurnKg = Math.round((airborneSeconds / 3600) * hourlyBurn);
   const co2Kg = Math.round(fuelBurnKg * 3.16);
-  const pricePerTonne = mode === "replay" ? activeScenario.pricePerTonneUSDC : 25.0;
+  const pricePerTonne = mode === "replay" ? (activeTrack?.pricePerTonneUSDC || 25.0) : 25.0;
   const usdcCost = Math.max(0.35, +((co2Kg / 1000) * pricePerTonne).toFixed(2));
   const currentFuelFlowRate = +(hourlyBurn / 3600).toFixed(2);
 
   const isLanded =
     mode === "replay"
-      ? activeReplayFrame.onGround || isSettled
+      ? (activeReplayFrame?.onGround || false) || isSettled
       : Boolean(activeData?.onGround);
 
   // Trigger Real Settlement on Arc Testnet via /api/settle
@@ -378,13 +620,29 @@ export default function FlightOperationsConsole() {
       return;
     }
 
+    // Pre-flight treasury spend guard: verify real USDC covers the pull before broadcasting.
+    {
+      const { checkTreasuryFunds, formatShortfall, FAUCET_HINT } = await import(
+        "@/lib/treasury-guard"
+      );
+      const neededMicro = BigInt(Math.round(usdcCost * 1_000_000));
+      const funds = await checkTreasuryFunds(activeWalletAddress, neededMicro);
+      if (!funds.ok) {
+        toast.error("Insufficient Treasury USDC", {
+          description: `${formatShortfall(funds)}. ${FAUCET_HINT}`,
+          duration: 12000,
+        });
+        return;
+      }
+    }
+
     setIsSettling(true);
 
     const isLive = mode === "live";
     const callsign = isLive
       ? (selectedFlight?.callsign || targetFrame?.callsign || "RADAR-1090")
-      : activeScenario.callsign;
-    const category = isLive ? liveCategory : activeScenario.category;
+      : (activeTrack?.callsign || targetFrame?.callsign || "RECORDED-TRACK");
+    const category = isLive ? liveCategory : (activeTrack?.category || liveCategory);
 
     const toastId = toast.loading(
       isLive
@@ -452,9 +710,9 @@ export default function FlightOperationsConsole() {
               id: `${callsign.toLowerCase()}-${Date.now()}`,
               callsign: callsign.toUpperCase(),
               icao24: flightIcao,
-              operator: isLive ? (selectedFlight?.originCountry ? `${selectedFlight.originCountry} Air Transport` : "Commercial Aviation") : activeScenario.airline,
-              origin: isLive ? "Origin Waypoint" : activeScenario.originAirport,
-              destination: isLive ? "Destination Airport" : activeScenario.destinationAirport,
+              operator: isLive ? (selectedFlight?.originCountry ? `${selectedFlight.originCountry} Air Transport` : "Commercial Aviation") : (activeTrack?.airline || "Recorded Track"),
+              origin: isLive ? "Origin Waypoint" : (activeTrack?.originAirport || "ENR"),
+              destination: isLive ? "Destination Airport" : (activeTrack?.destinationAirport || "RADAR"),
               airframe: flightAirframe,
               landedAt: "Just now",
               airborneSeconds,
@@ -471,22 +729,28 @@ export default function FlightOperationsConsole() {
       });
 
       // Executive Audit Certificate Data
+      const replayHash =
+        !isLive && activeTrack?.source !== "synthetic" && activeTrack?.fixCount
+          ? hashRecording(
+              (loadWatchedFlights().find((w) => `rec-${w.key}` === activeTrack.id)?.fixes) || []
+            )
+          : undefined;
       const cert: SettlementCertificateData = {
         flightId: data.flightId || `${callsign}-${Date.now()}`,
         callsign,
         airline: isLive
           ? (selectedFlight?.originCountry ? `${selectedFlight.originCountry} Commercial Airspace` : "Commercial Airspace")
-          : activeScenario.airline,
+          : (activeTrack?.airline || "Recorded Track"),
         airframe: isLive
           ? (selectedFlight?.equipmentType || (liveCategory === "HEAVY" ? "Heavy Widebody Jet" : "Commercial Jet"))
-          : activeScenario.airframe,
+          : (activeTrack?.airframe || "Recorded ADS-B Track"),
         originAirport: isLive
           ? (selectedFlight?.originCountry ? selectedFlight.originCountry.slice(0, 3).toUpperCase() : "DEP")
-          : activeScenario.originAirport,
-        destinationAirport: isLive ? "RADAR" : activeScenario.destinationAirport,
-        destinationName: isLive ? "Live Airspace Track" : activeScenario.destinationName,
-        runway: isLive ? "ENROUTE" : activeScenario.runway,
-        icao24: isLive ? (selectedFlight?.icao24 || "39DE4E") : activeScenario.icao24,
+          : (activeTrack?.originAirport || "ENR"),
+        destinationAirport: isLive ? "RADAR" : (activeTrack?.destinationAirport || "RADAR"),
+        destinationName: isLive ? "Live Airspace Track" : (activeTrack?.destinationName || "Recorded live airspace"),
+        runway: isLive ? "ENROUTE" : (activeTrack?.runway || "—"),
+        icao24: isLive ? (selectedFlight?.icao24 || "39DE4E") : (activeTrack?.icao24 || callsign.toLowerCase()),
         airborneSeconds,
         fuelBurnKg,
         co2Kg,
@@ -499,6 +763,10 @@ export default function FlightOperationsConsole() {
         agentAddress: data.agentAddress || "0x1698fdA3A9A8Ca9530434e545986176579F01650",
         vaultAddress: DEPLOYED_VAULT_ADDRESS,
         timestamp: Date.now(),
+        observedSeconds: !isLive ? activeTrack?.observedSeconds : undefined,
+        fixCount: !isLive ? activeTrack?.fixCount : undefined,
+        recordingHash: replayHash,
+        trackSource: !isLive ? activeTrack?.source : undefined,
       };
       setCertificateData(cert);
       setIsCertificateOpen(true);
@@ -535,24 +803,24 @@ export default function FlightOperationsConsole() {
       const isLive = mode === "live";
       const callsign = isLive
         ? (selectedFlight?.callsign || "RADAR-1090")
-        : activeScenario.callsign;
+        : (activeTrack?.callsign || "RECORDED-TRACK");
       setCertificateData({
         flightId: `${callsign}-DOC9889`,
         callsign,
         airline: isLive
           ? (selectedFlight?.originCountry ? `${selectedFlight.originCountry} Airspace` : "Commercial Airspace")
-          : activeScenario.airline,
+          : (activeTrack?.airline || "Recorded Track"),
         airframe: isLive
           ? (selectedFlight?.equipmentType || "Commercial Jet")
-          : activeScenario.airframe,
+          : (activeTrack?.airframe || "Recorded ADS-B Track"),
         originAirport: isLive
           ? (selectedFlight?.originCountry ? selectedFlight.originCountry.slice(0, 3).toUpperCase() : "DEP")
-          : activeScenario.originAirport,
-        destinationAirport: isLive ? "RADAR" : activeScenario.destinationAirport,
-        destinationName: isLive ? "Live Airspace Sector" : activeScenario.destinationName,
-        runway: isLive ? "ENROUTE" : activeScenario.runway,
-        icao24: isLive ? (selectedFlight?.icao24 || "39DE4E") : activeScenario.icao24,
-        airborneSeconds: isLive ? 3600 : activeScenario.plannedAirborneSeconds,
+          : (activeTrack?.originAirport || "ENR"),
+        destinationAirport: isLive ? "RADAR" : (activeTrack?.destinationAirport || "RADAR"),
+        destinationName: isLive ? "Live Airspace Sector" : (activeTrack?.destinationName || "Recorded live airspace"),
+        runway: isLive ? "ENROUTE" : (activeTrack?.runway || "—"),
+        icao24: isLive ? (selectedFlight?.icao24 || "39DE4E") : (activeTrack?.icao24 || "39DE4E"),
+        airborneSeconds: isLive ? 3600 : (activeTrack?.plannedAirborneSeconds || 0),
         fuelBurnKg,
         co2Kg,
         costUSDC: usdcCost,
@@ -570,7 +838,7 @@ export default function FlightOperationsConsole() {
     }
   };
 
-  // Replay Playback Timer
+  // Replay Playback Timer (speed-scaled; settlement guards prevent duplicate fires)
   useEffect(() => {
     if (mode !== "replay" || !isPlaying) return;
 
@@ -597,10 +865,10 @@ export default function FlightOperationsConsole() {
 
         return next;
       });
-    }, 1800);
+    }, Math.max(225, Math.round(1800 / Math.min(Math.max(playbackSpeed, 1), 8))));
 
     return () => clearInterval(interval);
-  }, [mode, isPlaying, activeReplayFrames, isSettled, isSettling]);
+  }, [mode, isPlaying, activeReplayFrames, isSettled, isSettling, playbackSpeed]);
 
   const handleStepNext = () => {
     if (replayIndex < activeReplayFrames.length - 1) {
@@ -621,7 +889,7 @@ export default function FlightOperationsConsole() {
   };
 
   const handleJumpToTouchdown = () => {
-    const tdIdx = activeScenario.touchdownIndex ?? (activeReplayFrames.length - 4);
+    const tdIdx = activeTrack?.touchdownIndex ?? (activeReplayFrames.length - 4);
     setReplayIndex(tdIdx);
     setIsPlaying(false);
     if (!isSettled && !isSettling) {
@@ -661,7 +929,7 @@ export default function FlightOperationsConsole() {
       {/* ── 2. FLIGHT MASTER & SCHEMATIC PANEL (400px) ── */}
       <div className="p-3 pr-0 flex flex-col shrink-0 h-full z-10 w-full max-w-[410px]">
         <FlightMasterCard
-          scenario={activeScenario}
+          scenario={activeTrack}
           liveCallsign={mode === "live" && selectedFlight ? selectedFlight.callsign : undefined}
           liveOriginCountry={mode === "live" && selectedFlight ? selectedFlight.originCountry : undefined}
           liveIcao24={mode === "live" && selectedFlight ? selectedFlight.icao24 : undefined}
@@ -691,11 +959,42 @@ export default function FlightOperationsConsole() {
               onFlightsChange={setLandedFlights}
               activeSessionCap={sessionData.budgetCapUSDC}
               onOpenSessionModal={() => setIsSessionModalOpen(true)}
+              armedCallsign={armedFlightCallsign}
+              onDisarm={() => disarmSettlement()}
+              treasuryAddress={activeWalletAddress}
+              selectedCallsign={selectedFlight?.callsign}
               onSettlementSuccess={(txHash, flight) => {
                 fetchBalance();
                 fetchCarbonCredits();
               }}
+              onReplayRecording={(trackId) => {
+                setSelectedTrackId(trackId);
+                setReplayIndex(0);
+                setIsPlaying(false);
+                setIsSettled(false);
+                setSettlementTxHash(undefined);
+                setCertificateData(null);
+                switchMode("replay");
+              }}
             />
+          </div>
+        ) : mode === "replay" && !activeTrack ? (
+          <div className="w-full h-full flex flex-col items-center justify-center gap-3 text-center p-8 border border-dashed border-[#d3c6aa]/16 bg-[#1e2528]">
+            <div className="font-mono text-sm font-semibold text-[#d3c6aa]">
+              No replay track available
+            </div>
+            <div className="text-xs text-[#859289] font-mono leading-relaxed max-w-sm">
+              Replay plays real recorded ADS-B — never fabricated telemetry. Watch
+              a live flight on the radar globe to record its path, or wait for the
+              bundled demo track.
+            </div>
+            <button
+              type="button"
+              onClick={() => switchMode("live")}
+              className="mt-1 px-4 py-2 bg-[#d3c6aa]/10 hover:bg-[#d3c6aa]/20 text-xs text-[#d3c6aa] cursor-pointer transition-colors font-mono border border-dashed border-[#d3c6aa]/16"
+            >
+              Back to Live Radar
+            </button>
           </div>
         ) : (
           <div className="relative w-full h-full overflow-hidden border border-dashed border-[#d3c6aa]/16 bg-[#1e2528]">
@@ -737,7 +1036,7 @@ export default function FlightOperationsConsole() {
                 onScrub={(idx) => {
                   setReplayIndex(idx);
                   setIsPlaying(false);
-                  const tdIdx = activeScenario.touchdownIndex ?? (activeReplayFrames.length - 4);
+                  const tdIdx = activeTrack?.touchdownIndex ?? (activeReplayFrames.length - 4);
                   if (idx < tdIdx && isSettled) {
                     setIsSettled(false);
                     setSettlementTxHash(undefined);
@@ -755,6 +1054,10 @@ export default function FlightOperationsConsole() {
                 liveVerticalRateMps={selectedFlight?.verticalRateMps}
                 usdcCost={usdcCost}
                 settlementTxHash={settlementTxHash}
+                playbackSpeed={playbackSpeed}
+                onSpeedChange={setPlaybackSpeed}
+                trackSource={mode === "replay" ? activeTrack?.source : undefined}
+                trackLabel={mode === "replay" ? activeTrack?.callsign : undefined}
               />
             </div>
 
@@ -766,6 +1069,9 @@ export default function FlightOperationsConsole() {
                   armedIcao={armedFlightCallsign}
                   onToggleArm={handleToggleArmSettlement}
                   onArmedTouchdown={handleArmedTouchdown}
+                  watchedKeys={watchedKeys}
+                  onToggleWatch={handleToggleWatch}
+                  onWatchedTouchdown={handleWatchedTouchdown}
                   onSwitchToLandedTab={() => setActiveNavTab("landed")}
                   landedCount={landedPendingCount}
                   onSelectFlight={(meta, enrichment) => {
@@ -797,7 +1103,7 @@ export default function FlightOperationsConsole() {
                   replayTrack={mode === "replay" ? activeReplayFrames : []}
                   destinationLabel={
                     mode === "replay"
-                      ? `${activeScenario.destinationAirport} Runway ${activeScenario.runway}`
+                      ? `${activeTrack?.destinationAirport || "RADAR"} Runway ${activeTrack?.runway || "—"}`
                       : undefined
                   }
                   onSelectFlight={(flight) => {
@@ -819,7 +1125,7 @@ export default function FlightOperationsConsole() {
                       : "text-[#859289] hover:text-[#d3c6aa]"
                   }`}
                 >
-                   Touchdown Replay (Synthetic)
+                   Replay Track
                 </button>
                 <button
                   type="button"
@@ -919,8 +1225,8 @@ export default function FlightOperationsConsole() {
                     isSettling={isSettling}
                     settlementTxHash={settlementTxHash}
                     blockNumber={certificateData?.blockNumber}
-                    runway={mode === "replay" ? activeScenario.runway : "25L"}
-                    destinationAirport={mode === "replay" ? activeScenario.destinationAirport : "EDDF"}
+                    runway={mode === "replay" ? (activeTrack?.runway || "—") : "25L"}
+                    destinationAirport={mode === "replay" ? (activeTrack?.destinationAirport || "RADAR") : "EDDF"}
                   />
                 )}
               </div>
@@ -950,8 +1256,9 @@ export default function FlightOperationsConsole() {
       <CommandSearchModal
         isOpen={isCommandOpen}
         onClose={() => setIsCommandOpen(false)}
-        onSelectScenario={(scen, idx) => {
-          setSelectedScenarioIndex(idx);
+        tracks={playableTracks}
+        onSelectTrack={(track) => {
+          setSelectedTrackId(track.id);
           setReplayIndex(0);
           setIsPlaying(false);
           setIsSettled(false);

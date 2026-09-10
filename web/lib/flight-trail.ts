@@ -46,6 +46,7 @@ export class FlightTrailRenderer {
 
     this.positions = valid.slice(-150); // Keep last 150 fixes for clean memory
     this.ensureEntitiesCreated();
+    this.requestFrame();
   }
 
   /**
@@ -77,6 +78,15 @@ export class FlightTrailRenderer {
     }
 
     this.ensureEntitiesCreated();
+    this.requestFrame();
+  }
+
+  private requestFrame() {
+    try {
+      this.viewer.scene.requestRender();
+    } catch {
+      // Viewer may be tearing down; ignore.
+    }
   }
 
   private ensureEntitiesCreated() {
@@ -131,6 +141,7 @@ export class FlightTrailRenderer {
       this.viewer.entities.remove(this.dropLineEntity);
       this.dropLineEntity = null;
     }
+    this.requestFrame();
   }
 }
 

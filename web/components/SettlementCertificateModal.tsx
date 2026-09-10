@@ -43,6 +43,11 @@ export interface SettlementCertificateData {
   agentAddress: string;
   vaultAddress: string;
   timestamp: number;
+  /** Recorded-track audit binding (present when settled from a recording). */
+  observedSeconds?: number;
+  fixCount?: number;
+  recordingHash?: string;
+  trackSource?: string;
 }
 
 interface SettlementCertificateModalProps {
@@ -303,6 +308,18 @@ export function SettlementCertificateModal({
             </div>
 
             <div className="space-y-2 text-[11px]">
+              {/* Recorded-track audit binding (only for recording-sourced settlements) */}
+              {data.fixCount ? (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 pb-2 border-b border-dashed border-[#d3c6aa]/[0.08]">
+                  <span className="text-[#859289]">Recorded Track Proof:</span>
+                  <span
+                    title={`Observed ${data.observedSeconds ?? 0}s across ${data.fixCount} live ADS-B fixes (partial-leg observation). Recording hash ${data.recordingHash || "—"}.`}
+                    className="text-[#7fbbb3] font-mono font-medium tabular-nums"
+                  >
+                    {data.fixCount} fixes · {Math.round((data.observedSeconds ?? 0) / 60)} min observed · #{data.recordingHash || "—"}
+                  </span>
+                </div>
+              ) : null}
               {/* Transaction Hash with 1-Click Copy & Status Badge */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
                 <span className="text-[#859289]">Transaction Hash:</span>

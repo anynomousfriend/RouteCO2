@@ -80,7 +80,12 @@ export class FlightsCesiumLayer {
   billboards: Cesium.BillboardCollection;
   aircraftMap = new Map<string, AircraftLayerEntry>();
   trackedIcao: string | null = null;
+  armedIcao: string | null = null;
+  watchedKeys: Set<string> = new Set();
   removeTick: (() => void) | null = null;
+
+  /** Armed-autosettle marker color (distinct from tracked evergreen + landed yellow) */
+  static readonly ARMED_COLOR = "#e69875";
 
   constructor(viewer: Cesium.Viewer) {
     this.viewer = viewer;
@@ -164,6 +169,7 @@ export class FlightsCesiumLayer {
         },
       };
       this.aircraftMap.set(icao24, entry);
+      this.paintEntry(entry, icao24 === this.trackedIcao);
     } else {
       entry.meta.icao24 = icao24.toLowerCase();
       entry.meta.callsign = data.callsign || entry.meta.callsign;
@@ -180,23 +186,99 @@ export class FlightsCesiumLayer {
     }
   }
 
+  /** Central color rule: tracked > armed > watched > landed > default. */
+  private paintEntry(entry: AircraftLayerEntry, isTracked: boolean) {
+    const keyMatch = (k: string | null) =>
+      k !== null &&
+      (entry.meta.icao24 === k.toLowerCase() ||
+        entry.meta.callsign.toLowerCase() === k.toLowerCase());
+    const isArmed = keyMatch(this.armedIcao);
+    const isWatched =
+      !isArmed &&
+      Array.from(this.watchedKeys).some(
+        (k) =>
+          entry.meta.icao24 === k.toLowerCase() ||
+          entry.meta.callsign.toLowerCase() === k.toLowerCase()
+      );
+    if (isTracked) {
+      entry.bb.color = Cesium.Color.fromCssColorString("#a7c080"); // RouteCO2 evergreen
+      entry.bb.width = 34;
+      entry.bb.height = 34;
+    } else {
+      entry.bb.width = 26;
+      entry.bb.height = 26;
+      if (isArmed) {
+        entry.bb.color = Cesium.Color.fromCssColorString(FlightsCesiumLayer.ARMED_COLOR);
+      } else if (isWatched) {
+        entry.bb.color = Cesium.Color.fromCssColorString("#7fbbb3"); // Teal: watchlist recording
+      } else if (entry.meta.onGround) {
+        entry.bb.color = Cesium.Color.fromCssColorString("#dbbc7f"); // Everforest yellow for landed/ground
+      } else {
+        entry.bb.color = Cesium.Color.WHITE;
+      }
+    }
+  }
+
+  private requestFrame() {
+    try {
+      this.viewer.scene.requestRender();
+    } catch {
+      // Viewer may be tearing down; ignore.
+    }
+  }
+
   setTracked(icao24: string | null) {
     if (this.trackedIcao && this.aircraftMap.has(this.trackedIcao)) {
       const prev = this.aircraftMap.get(this.trackedIcao)!;
-      prev.bb.color = prev.meta.onGround
-        ? Cesium.Color.fromCssColorString("#dbbc7f")
-        : Cesium.Color.WHITE;
-      prev.bb.width = 26;
-      prev.bb.height = 26;
+      this.paintEntry(prev, false);
     }
 
     this.trackedIcao = icao24;
     if (icao24 && this.aircraftMap.has(icao24)) {
       const current = this.aircraftMap.get(icao24)!;
-      current.bb.color = Cesium.Color.fromCssColorString("#a7c080"); // RouteCO2 evergreen
-      current.bb.width = 34;
-      current.bb.height = 34;
+      this.paintEntry(current, true);
     }
+    this.requestFrame();
+  }
+
+  /** Replaces the watched-recording key set and repaints affected billboards. */
+  setWatched(keys: string[]) {
+    const prev = this.watchedKeys;
+    this.watchedKeys = new Set(keys.map((k) => k.toLowerCase()));
+    const touched = new Set<string>([...prev, ...this.watchedKeys]);
+    for (const key of touched) {
+      const entry =
+        this.aircraftMap.get(key) ||
+        this.getAllAircraft().find(
+          (a) =>
+            a.meta.callsign.toLowerCase() === key ||
+            a.meta.icao24?.toLowerCase() === key
+        );
+      if (entry) {
+        this.paintEntry(entry, entry.meta.icao24 === this.trackedIcao);
+      }
+    }
+    this.requestFrame();
+  }
+
+  /** Marks the armed-autosettle aircraft (amber marker); pass null to clear. */
+  setArmed(identifier: string | null) {
+    const prevArmed = this.armedIcao;
+    this.armedIcao = identifier ? identifier.toLowerCase() : null;
+    for (const key of [prevArmed, this.armedIcao]) {
+      if (!key) continue;
+      const entry =
+        this.aircraftMap.get(key) ||
+        this.getAllAircraft().find(
+          (a) =>
+            a.meta.callsign.toLowerCase() === key ||
+            a.meta.icao24?.toLowerCase() === key
+        );
+      if (entry) {
+        this.paintEntry(entry, entry.meta.icao24 === this.trackedIcao);
+      }
+    }
+    this.requestFrame();
   }
 
   getAircraft(icao24: string): AircraftLayerEntry | undefined {
@@ -212,16 +294,20 @@ export class FlightsCesiumLayer {
     if (entry) {
       this.billboards.remove(entry.bb);
       this.aircraftMap.delete(icao24);
+      this.requestFrame();
     }
   }
 
   pruneExcept(keepIcaos: Set<string>, trackedIcao: string | null) {
+    let pruned = false;
     for (const [icao, entry] of this.aircraftMap) {
       if (!keepIcaos.has(icao.toLowerCase()) && icao.toLowerCase() !== trackedIcao?.toLowerCase()) {
         this.billboards.remove(entry.bb);
         this.aircraftMap.delete(icao);
+        pruned = true;
       }
     }
+    if (pruned) this.requestFrame();
   }
 
   destroy() {

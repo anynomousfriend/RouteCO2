@@ -86,7 +86,7 @@ export function arcOffsetEnu(speedMps: number, trackDeg: number, turnRateDps: nu
  * Main Kinematic Position Evaluator per Aircraft
  */
 export class AircraftMotionTracker {
-  history: PositionFix[] = []; // Up to 50 samples
+  history: PositionFix[] = []; // Up to 24 samples (~4 min at 10s cadence, low-RAM friendly)
   displayCourse = 0;
   turnRateDps = 0;
 
@@ -98,7 +98,7 @@ export class AircraftMotionTracker {
       track: Number.isFinite(track) ? track : this.displayCourse,
       receivedEpochMs: Date.now(),
     });
-    if (this.history.length > 50) this.history.shift();
+    if (this.history.length > 24) this.history.shift();
     this.turnRateDps = estimateTurnRateDps(this.history);
     if (Number.isFinite(track)) {
       this.displayCourse = track;

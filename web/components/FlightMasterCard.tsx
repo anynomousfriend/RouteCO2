@@ -4,10 +4,10 @@ import React from "react";
 import { Search, MapPin, Fuel, Leaf } from "lucide-react";
 import NumberFlow from "@number-flow/react";
 import { AircraftWireframe } from "./AircraftWireframe";
-import type { ReplayScenario } from "../lib/replay-scenarios";
+import type { PlayableTrack } from "../lib/replay-tracks";
 
 interface FlightMasterCardProps {
-  scenario: ReplayScenario;
+  scenario: PlayableTrack | null;
   liveCallsign?: string;
   liveOriginCountry?: string;
   liveIcao24?: string;
@@ -47,17 +47,44 @@ export function FlightMasterCard({
   onOpenCommandSearch,
   className = "",
 }: FlightMasterCardProps) {
-  const callsign = mode === "replay" ? scenario.callsign : liveCallsign || "RADAR-1090";
-  const icaoHex = mode === "replay" ? scenario.icao24 : liveIcao24 || "39DE4E";
+  // Replay mode with no playable track yet (no bundled seed, no recordings):
+  // honest empty state instead of fabricated flight data.
+  if (mode === "replay" && !scenario) {
+    return (
+      <div
+        className={`w-full max-w-[420px] bg-[#343f44] p-6 border border-dashed border-[#d3c6aa]/16 flex flex-col gap-3 items-center justify-center text-center min-h-[420px] select-none ${className}`}
+      >
+        <MapPin className="w-8 h-8 text-[#859289]" />
+        <div className="font-mono text-sm font-semibold text-[#d3c6aa]">
+          No replay track available
+        </div>
+        <div className="text-xs text-[#859289] font-mono leading-relaxed max-w-[280px]">
+          Watch a live flight on the radar globe to record its path, or wait for
+          the bundled demo track. Replay plays real recorded ADS-B — never
+          fabricated telemetry.
+        </div>
+        <button
+          type="button"
+          onClick={onOpenCommandSearch}
+          className="mt-1 px-4 py-2 bg-[#d3c6aa]/10 hover:bg-[#d3c6aa]/20 text-xs text-[#d3c6aa] cursor-pointer transition-colors font-mono border border-dashed border-[#d3c6aa]/16"
+        >
+          Browse Tracks (⌘K)
+        </button>
+      </div>
+    );
+  }
+  const track = scenario;
+  const callsign = mode === "replay" ? (track?.callsign || "NO-TRACK") : liveCallsign || "RADAR-1090";
+  const icaoHex = mode === "replay" ? (track?.icao24 || "39DE4E") : liveIcao24 || "39DE4E";
   const airframe =
     mode === "replay"
-      ? scenario.airframe
+      ? (track?.airframe || "Recorded ADS-B Track")
       : liveEquipmentType && !liveEquipmentType.includes("/")
       ? liveEquipmentType
       : "Airbus A320-200";
   const locationText =
     mode === "replay"
-      ? `${scenario.destinationAirport} · ${scenario.destinationName}`
+      ? `${track?.destinationAirport || "RADAR"} · ${track?.destinationName || "Recorded live airspace"}`
       : `${liveOriginCountry || "International Airspace"} Sector`;
 
   const altitudeFt = Math.round(altitudeM * 3.28084);
@@ -105,7 +132,7 @@ export function FlightMasterCard({
     }
   }, [liveCategory]);
 
-  const displayedHourlyBurn = mode === "live" ? liveHourlyBurn : scenario.hourlyBurnKg;
+  const displayedHourlyBurn = mode === "live" ? liveHourlyBurn : (track?.hourlyBurnKg || 2400);
 
   return (
     <div
@@ -212,7 +239,7 @@ export function FlightMasterCard({
           <div className="text-xs text-[#9daaa4] font-mono mt-1 flex items-center gap-1.5">
             <span className="font-medium text-[#d3c6aa]">{airframe}</span>
             <span className="text-[#859289]">·</span>
-            <span>{mode === "replay" ? scenario.airline : "Commercial Carrier"}</span>
+            <span>{mode === "replay" ? (track?.airline || "Recorded Track") : "Commercial Carrier"}</span>
           </div>
         </div>
 
@@ -257,7 +284,7 @@ export function FlightMasterCard({
           airframe={airframe}
           icao24={icaoHex}
           hourlyBurnKg={displayedHourlyBurn}
-          runway={scenario.runway}
+          runway={track?.runway || "—"}
           altitudeFt={altitudeFt}
           speedKts={speedKts}
           className="w-full h-full flex-1"
