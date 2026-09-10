@@ -8,45 +8,6 @@
  * - Great-circle cross-track route plausibility check
  */
 
-const D2R = Math.PI / 180;
-const EARTH_RADIUS_KM = 6371;
-
-export function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const p1 = lat1 * D2R;
-  const p2 = lat2 * D2R;
-  const dp = (lat2 - lat1) * D2R;
-  const dl = (lon2 - lon1) * D2R;
-  const a = Math.sin(dp / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
-  return EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-export interface RouteEndpoint {
-  lat: number;
-  lon: number;
-  name?: string;
-}
-
-export function isRoutePlausible(params: {
-  lat: number;
-  lon: number;
-  altitudeM: number;
-  verticalRateMps: number;
-  origin?: RouteEndpoint | null;
-  destination?: RouteEndpoint | null;
-}): boolean {
-  if (!params.origin?.lat || !params.destination?.lat) return true;
-
-  const distToOrigin = haversineKm(params.lat, params.lon, params.origin.lat, params.origin.lon);
-  const distToDest = haversineKm(params.lat, params.lon, params.destination.lat, params.destination.lon);
-
-  // If plane is low (< 3,700m) and climbing (> 2m/s), origin MUST be local (< 150km)
-  if (params.altitudeM < 3700 && params.verticalRateMps > 2.0 && distToOrigin > 150) return false;
-  // If plane is low and descending (< -2m/s), destination MUST be local (< 150km)
-  if (params.altitudeM < 3700 && params.verticalRateMps < -2.0 && distToDest > 150) return false;
-
-  return distToOrigin < 150 || distToDest < 150;
-}
-
 export interface AircraftEnrichment {
   icao24: string;
   type?: string;

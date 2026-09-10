@@ -43,37 +43,6 @@ export function saveStoredSettledFlight(flight: LandedFlightRecord): void {
 }
 
 /**
- * Persist multiple settled flights into localStorage.
- */
-export function saveStoredSettledFlights(flights: LandedFlightRecord[]): void {
-  if (typeof window === "undefined" || flights.length === 0) return;
-  try {
-    const current = getStoredSettledFlights();
-    const currentMap = new Map<string, LandedFlightRecord>();
-    current.forEach((f) => {
-      currentMap.set(f.id, f);
-      currentMap.set(f.callsign.toUpperCase(), f);
-    });
-
-    flights.forEach((f) => {
-      const settledRecord = { ...f, status: "SETTLED" as const };
-      currentMap.set(f.id, settledRecord);
-      currentMap.set(f.callsign.toUpperCase(), settledRecord);
-    });
-
-    // Deduplicate by ID
-    const uniqueMap = new Map<string, LandedFlightRecord>();
-    currentMap.forEach((f) => {
-      uniqueMap.set(f.id, f);
-    });
-
-    localStorage.setItem(STORAGE_KEY_SETTLED, JSON.stringify(Array.from(uniqueMap.values())));
-  } catch (err) {
-    console.warn("[SettledStorage] Failed to batch persist flights:", err);
-  }
-}
-
-/**
  * Merge live ADS-B radar arrivals with persisted settled flights.
  * Guarantees that previously settled flights retain their SETTLED status, txHash, and receipt,
  * and offline settled flights stay in the queue until cleared.

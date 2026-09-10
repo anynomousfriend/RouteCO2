@@ -1,19 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createPublicClient, http, defineChain, type Hex } from "viem";
+import { type Hex } from "viem";
+import { publicArcClient } from "@/lib/arc-client";
 
 export const dynamic = "force-dynamic";
-
-const arcTestnet = defineChain({
-  id: 5042002,
-  name: "Arc Testnet",
-  nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
-  rpcUrls: {
-    default: { http: ["https://rpc.testnet.arc.network"] },
-  },
-  blockExplorers: {
-    default: { name: "ArcScan", url: "https://testnet.arcscan.app" },
-  },
-});
 
 export async function GET(request: NextRequest) {
   try {
@@ -27,13 +16,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const publicClient = createPublicClient({
-      chain: arcTestnet,
-      transport: http("https://rpc.testnet.arc.network", {
-        timeout: 10_000,
-        retryCount: 2,
-      }),
-    });
+    const publicClient = publicArcClient;
 
     // 1. Fetch live unforgeable receipt directly from Arc L1 Node
     const [receipt, currentL1Block] = await Promise.all([
