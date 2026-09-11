@@ -31,3 +31,5 @@ broadcast/
 .superpowers/
 bin/
 demo.md
+# Server-side watch recorder state (local JSON, machine-local)
+web/.data/

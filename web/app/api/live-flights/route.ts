@@ -13,7 +13,12 @@ let lastSource = "ADS-B Radar";
 const CACHE_TTL_MS = 10000; // 10 seconds cache
 
 /**
- * Fetches live ADS-B telemetry from OpenSky Network (with OAuth2 Bearer Auth or Basic Auth)
+ * Fetches live ADS-B telemetry from OpenSky Network (with OAuth2 Bearer Auth or Basic Auth).
+ * Airborne states are included normally. On-ground states are ALSO included for
+ * explicitly watched/armed icao24s (?watch=hex1,hex2) so touchdown detection
+ * (airborne→ground transition) works even when OpenSky — not the adsb.lol
+ * fallback — is the active source. Without this, a watched landing would
+ * silently vanish from the feed instead of flipping to LANDED_RECORDED.
  */
 async function fetchFromOpenSky(searchParams: URLSearchParams): Promise<LiveFlightSummary[] | null> {
   const isGlobal = searchParams.get("all") === "true";
@@ -31,8 +36,7 @@ async function fetchFromOpenSky(searchParams: URLSearchParams): Promise<LiveFlig
     "User-Agent": "RouteCO2-Console/1.0 (ETHOnline2026; FlightOperations)",
   };
 
-  const bearerToken = await getOpenSkyBearerToken();
-  if (bearerToken) {
+  const bearerToken = await getOpenSkyBearerToken();  if (bearerToken) {
     headers["Authorization"] = `Bearer ${bearerToken}`;
   } else if (process.env.OPENSKY_USERNAME && process.env.OPENSKY_PASSWORD) {
     const basic = Buffer.from(
@@ -61,29 +65,43 @@ async function fetchFromOpenSky(searchParams: URLSearchParams): Promise<LiveFlig
       return null;
     }
 
+    const watchSet = new Set(
+      (searchParams.get("watch") || "")
+        .split(",")
+        .map((s) => s.trim().toLowerCase())
+        .filter((s) => /^[0-9a-f]{4,6}$/.test(s))
+    );
+
     const filtered: LiveFlightSummary[] = [];
     for (const s of data.states) {
+      const icao = typeof s[0] === "string" ? String(s[0]).toLowerCase() : "";
+      const isWatched = icao !== "" && watchSet.has(icao);
+      const onGroundState = s[8] === true;
+      // Watched/armed aircraft are included even when on the ground (touchdown
+      // detection); everything else stays airborne-only to avoid flooding the
+      // 250-cap with parked aircraft and surface vehicles.
+      if (!isWatched && onGroundState) continue;
       if (
-        s[8] === false && // airborne
-        s[5] !== null &&  // longitude
-        s[6] !== null &&  // latitude
-        s[7] !== null &&  // baro_altitude
-        s[9] !== null &&  // velocity
-        s[1] !== null &&  // callsign
+        s[5] !== null && // longitude
+        s[6] !== null && // latitude
+        (s[7] !== null || isWatched) && // baro_altitude (ground states report null)
+        s[1] !== null && // callsign
         typeof s[1] === "string" &&
         s[1].trim().length > 0
       ) {
+        // Velocity can be null on the ground; default to 0 (honest, not mock).
+        const vel = s[9] !== null && Number.isFinite(Number(s[9])) ? Math.round(Number(s[9])) : 0;
         filtered.push({
-          icao24: String(s[0]).toLowerCase(),
+          icao24: icao,
           callsign: String(s[1]).trim(),
           originCountry: String(s[2] || "Commercial"),
           longitude: Number(s[5]),
           latitude: Number(s[6]),
-          baroAltitudeMeters: Math.round(Number(s[7])),
-          velocityMps: Math.round(Number(s[9])),
+          baroAltitudeMeters: s[7] !== null ? Math.round(Number(s[7])) : 0,
+          velocityMps: vel,
           trueTrackDeg: s[10] !== null ? Math.round(Number(s[10])) : 0,
           verticalRateMps: s[11] !== null ? Math.round(Number(s[11]) * 10) / 10 : 0,
-          onGround: false,
+          onGround: onGroundState,
         });
         if (filtered.length >= 250) break;
       }
@@ -165,9 +183,86 @@ async function fetchFromLiveADSB(searchParams: URLSearchParams): Promise<LiveFli
   }
 }
 
+/** Converts one adsb.lol readsb aircraft object to a LiveFlightSummary (null when unusable). */
+function adsbAcToSummary(a: any): LiveFlightSummary | null {
+  if (
+    !a ||
+    !a.hex ||
+    !a.flight ||
+    typeof a.flight !== "string" ||
+    a.flight.trim().length === 0 ||
+    typeof a.lat !== "number" ||
+    typeof a.lon !== "number"
+  ) {
+    return null;
+  }
+  const isGround = a.alt_baro === "ground" || a.alt_geom === "ground";
+  const altFeet = typeof a.alt_baro === "number" ? a.alt_baro : 0;
+  const speedKts = typeof a.gs === "number" ? a.gs : 0;
+  const vrateFpm = typeof a.baro_rate === "number" ? a.baro_rate : 0;
+  return {
+    icao24: String(a.hex).toLowerCase(),
+    callsign: String(a.flight).trim(),
+    originCountry: a.r ? String(a.r) : "Commercial",
+    equipmentType: a.t ? String(a.t) : "A320",
+    longitude: Number(a.lon),
+    latitude: Number(a.lat),
+    baroAltitudeMeters: Math.round(altFeet * 0.3048),
+    velocityMps: Math.round(speedKts * 0.514444),
+    trueTrackDeg: typeof a.track === "number" ? Math.round(a.track) : 0,
+    verticalRateMps: Math.round(vrateFpm * 0.00508 * 10) / 10,
+    onGround: isGround,
+  };
+}
+
+/**
+ * Direct per-aircraft lookup for watched/armed keys (free adsb.lol endpoint).
+ * Covers the cross-source gap: OpenSky may drop a landing aircraft that
+ * adsb.lol still sees on the ground (or vice versa). Only queried for the
+ * caller's explicit watch list — a handful of keys, one cheap call each.
+ */
+async function fetchWatchedDirect(hexes: string[]): Promise<LiveFlightSummary[]> {
+  const out: LiveFlightSummary[] = [];
+  await Promise.all(
+    hexes.slice(0, 20).map(async (hex) => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      try {
+        const res = await fetch(`https://api.adsb.lol/v2/icao/${encodeURIComponent(hex)}`, {
+          signal: controller.signal,
+          headers: {
+            Accept: "application/json",
+            "User-Agent": "RouteCO2-Console/1.0 (ETHOnline2026; FlightOperations)",
+          },
+        });
+        clearTimeout(timeoutId);
+        if (!res.ok) return;
+        const data = await res.json();
+        const list: any[] = Array.isArray(data.ac) ? data.ac : [];
+        for (const a of list) {
+          const s = adsbAcToSummary(a);
+          if (s) out.push(s);
+        }
+      } catch {
+        clearTimeout(timeoutId);
+      }
+    })
+  );
+  return out;
+}
+
 export async function GET(request: NextRequest) {
   const now = Date.now();
-  if (cachedFlights.length > 0 && now - lastFetchTime < CACHE_TTL_MS) {
+  const { searchParams } = new URL(request.url);
+  const watchHexes = (searchParams.get("watch") || "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter((s) => /^[0-9a-f]{4,6}$/.test(s));
+
+  // The shared cache holds the generic airborne feed. Watch requests bypass
+  // the read (a touchdown ground state must never be hidden behind a stale
+  // airborne snapshot) but still refresh it when no watch is active.
+  if (watchHexes.length === 0 && cachedFlights.length > 0 && now - lastFetchTime < CACHE_TTL_MS) {
     return NextResponse.json({
       flights: cachedFlights,
       count: cachedFlights.length,
@@ -177,9 +272,8 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  const { searchParams } = new URL(request.url);
-
-  // 1. Try OpenSky Network with OAuth2 Bearer Auth
+  // 1. Try OpenSky Network with OAuth2 Bearer Auth (includes on-ground
+  // states for ?watch= keys so touchdown transitions are observable).
   let flights = await fetchFromOpenSky(searchParams);
   let source = "OpenSky Network ADS-B (OAuth2 Authenticated)";
 
@@ -193,17 +287,40 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // 3. Cross-source repair for watched keys: merge direct per-aircraft
+  // lookups. A direct on-ground report wins over a stale/absent entry so a
+  // watched landing always flips to LANDED_RECORDED exactly once.
+  if (flights && flights.length > 0 && watchHexes.length > 0) {
+    try {
+      const direct = await fetchWatchedDirect(watchHexes);
+      if (direct.length > 0) {
+        const byIcao = new Map(flights.map((f) => [f.icao24, f]));
+        for (const d of direct) {
+          const cur = byIcao.get(d.icao24);
+          if (!cur || (d.onGround && !cur.onGround)) byIcao.set(d.icao24, d);
+        }
+        flights = [...byIcao.values()];
+        source = `${source} + direct watch repair`;
+      }
+    } catch {
+      // Repair is best-effort; the base feed still stands.
+    }
+  }
   if (flights && flights.length > 0) {
-    cachedFlights = flights;
-    lastFetchTime = now;
-    lastSource = source;
+    // Don't let watch-repaired ground states leak into the shared generic
+    // cache; the next plain poll refetches its own airborne snapshot anyway.
+    if (watchHexes.length === 0) {
+      cachedFlights = flights;
+      lastFetchTime = now;
+      lastSource = source;
+    }
 
     return NextResponse.json({
-      flights: cachedFlights,
-      count: cachedFlights.length,
-      source: lastSource,
+      flights,
+      count: flights.length,
+      source,
       cached: false,
-      timestamp: lastFetchTime,
+      timestamp: now,
     });
   }
 

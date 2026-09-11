@@ -5,7 +5,7 @@
  *
  * A watched flight accumulates one ADS-B fix per radar poll from the moment the
  * user taps Watch. Recordings persist in localStorage under manual-clear
- * retention: nothing is auto-evicted — the user deletes tracks explicitly.
+ * retention: nothing is auto-evicted; the user deletes tracks explicitly.
  * Active watches are delete-protected until stopped.
  */
 
@@ -31,6 +31,8 @@ export interface WatchedFlight {
   landedAt?: number;
   fixes: RecordedFix[];
   truncated?: boolean;
+  /** True when auto-captured by the server recorder (no UI selection). */
+  auto?: boolean;
 }
 
 const STORAGE_KEY = "routeco2_watchlist_recordings_v1";
@@ -75,9 +77,9 @@ function persist(all: WatchedFlight[]): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
   } catch (err) {
-    console.warn("[Watchlist] Persist failed (quota?) — refusing to drop data:", err);
+    console.warn("[Watchlist] Persist failed (quota?): refusing to drop data:", err);
     throw new Error(
-      "Recording storage is full. Delete old tracks before watching new flights — nothing was auto-removed."
+      "Recording storage is full. Delete old tracks before watching new flights: nothing was auto-removed."
     );
   }
 }

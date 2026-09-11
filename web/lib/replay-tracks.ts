@@ -5,7 +5,7 @@
  *
  * Sources: "recorded" (user-watched live tracks), "bundled" (canonical
  * pre-recorded live track shipped for deterministic demos), "synthetic"
- * (physics fixtures — hidden behind ?dev-synthetic=1, never in demo paths).
+ * (physics fixtures: hidden behind ?dev-synthetic=1, never in demo paths).
  * PlayableTrack extends the legacy ReplayScenario shape so existing cards
  * (FlightMasterCard) keep working unchanged.
  */
@@ -26,6 +26,10 @@ export interface PlayableTrack extends ReplayScenario {
   capturedAt?: number;
   fixCount?: number;
   observedSeconds?: number;
+  /** True while the source watch is still WATCHING (preview, not yet landed). */
+  inProgress?: boolean;
+  /** True when auto-captured by the server recorder (no UI selection). */
+  autoRecorded?: boolean;
   /** Real leg-history enrichment (OpenSky flight-leg lookup, best-effort). */
   leg?: {
     depAirport?: string | null;
@@ -91,7 +95,7 @@ export function recordedToTrack(
     originAirport: "ENR",
     destinationAirport: "RADAR",
     destinationName: "Recorded live airspace",
-    runway: "—",
+    runway: "--",
     airportCoords: [last.latitude, last.longitude],
     plannedAirborneSeconds: observed,
     icao24: w.icao24 || w.callsign.toLowerCase(),
@@ -104,6 +108,8 @@ export function recordedToTrack(
     capturedAt: opts.capturedAt ?? w.watchStartedAt,
     fixCount: frames.length,
     observedSeconds: observed,
+    inProgress: w.status !== "LANDED_RECORDED",
+    autoRecorded: Boolean(w.auto),
     leg: null,
   };
 }
@@ -123,7 +129,7 @@ export async function loadBundledTracks(): Promise<PlayableTrack[]> {
       }
     }
   } catch {
-    // No bundle yet — demo grows from user recordings.
+    // No bundle yet: demo grows from user recordings.
   }
   if (out.length === 0) {
     // Legacy single-track asset fallback.
@@ -135,7 +141,7 @@ export async function loadBundledTracks(): Promise<PlayableTrack[]> {
         if (t) out.push(t);
       }
     } catch {
-      // Absent — fine.
+      // Absent: fine.
     }
   }
   return out;

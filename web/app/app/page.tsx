@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
-import dynamic from "next/dynamic";
 import { useWalletAuth } from "@/lib/use-wallet-auth";
 import { useFlightSessionDelegation } from "@/lib/privy-signers";
 import { isSessionSignerConfigured } from "@/lib/privy-config";
@@ -19,12 +18,17 @@ import {
 import {
   hashRecording,
   loadWatchedFlights,
+  MAX_FIXES_PER_TRACK,
   observedSeconds as observedSpanSeconds,
   removeWatchedFlight,
   saveWatchedFlight,
   type RecordedFix,
   type WatchedFlight,
 } from "@/lib/watchlist-store";
+import {
+  rankLandingCandidates,
+  type LandingCandidate,
+} from "@/lib/landing-candidates";
 import { NavigationDock } from "@/components/NavigationDock";
 import { FlightMasterCard } from "@/components/FlightMasterCard";
 import { DescentTimelineBar } from "@/components/DescentTimelineBar";
@@ -55,7 +59,7 @@ import {
   DEFAULT_AIRFRAME,
   calculateLandedFlightSettlement,
 } from "@/lib/icao-precision";
-import { Activity, ChevronDown, ChevronUp, Globe2, Map } from "lucide-react";
+import { Activity, ChevronDown, ChevronUp } from "lucide-react";
 import { formatEther } from "viem";
 import {
   publicArcClient,
@@ -63,18 +67,7 @@ import {
   SKYROUTE_VAULT_ABI,
 } from "@/lib/arc-client";
 import WindyFlightMap from "@/components/WindyFlightMap";
-
-const CesiumGlobeViewer = dynamic(() => import("@/components/CesiumGlobeViewer"), {
-  ssr: false,
-  loading: () => (
-    <div className="w-full h-full min-h-[640px] flex items-center justify-center bg-[#1e2528] text-[#a7c080] font-mono text-xs border border-dashed border-[#d3c6aa]/16">
-      <div className="flex flex-col items-center gap-3">
-        <Globe2 className="w-8 h-8 animate-spin text-[#a7c080]/60" />
-        <span className="tracking-widest uppercase">Initializing 3D Digital Globe Engine...</span>
-      </div>
-    </div>
-  ),
-});
+import { RadialGridArt } from "@/components/GenerativeVectors";
 
 const DEPLOYED_VAULT_ADDRESS = SKYROUTE_VAULT_ADDRESS;
 
@@ -97,8 +90,7 @@ export default function FlightOperationsConsole() {
     setCertificateData(null);
   };
 
-  // 3D Globe vs 2D Radar Engine (Default: "3d")
-  const [mapEngine, setMapEngine] = useState<"3d" | "2d">("3d");
+  // 2D Leaflet radar engine (3D Cesium globe removed on this branch).
   const [armedFlightCallsign, setArmedFlightCallsign] = useState<string | null>(null);
   const armTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [landedFlights, setLandedFlights] = useState<LandedFlightRecord[]>(INITIAL_LANDED_FLIGHTS);
@@ -163,7 +155,7 @@ export default function FlightOperationsConsole() {
       setArmedFlightCallsign(null);
       armTimeout.current = null;
       toast.warning("Settlement Watch Expired", {
-        description: `No touchdown detected for ${live.callsign.toUpperCase()} within 15 minutes. Watch disarmed — re-arm to continue.`,
+        description: `No touchdown detected for ${live.callsign.toUpperCase()} within 15 minutes. Watch disarmed: re-arm to continue.`,
         duration: 10000,
       });
     }, 15 * 60 * 1000);
@@ -173,25 +165,30 @@ export default function FlightOperationsConsole() {
     });
   };
 
-  const handleArmedTouchdown = (meta: any) => {
-    if (
-      armedFlightCallsign &&
-      meta.callsign &&
-      meta.callsign.toLowerCase() === armedFlightCallsign.toLowerCase()
-    ) {
-      toast.info(`Touchdown Confirmed: ${meta.callsign}`, {
-        description: `Autonomous agent triggering verified carbon offset settlement on Arc Testnet...`,
-      });
-      clearArmTimer();
-      triggerWheelsDownSettlement(meta);
-      setArmedFlightCallsign(null);
-    }
-  };
-
   // ---- Flight Watchlist: record path → land → replay → manual settle ----
   // Watching and armed auto-settle are mutually exclusive per flight: a manual
   // review intent (watch) always wins over autonomous settlement (arm).
+  // 2D-ONLY ENGINE: the globe's FlightTrackerApp is gone. Recording appends one
+  // ADS-B fix per live-radar poll (see the recorder effect below), and
+  // airborne→ground transitions in the same poll drive touchdown handling.
+  // Refs mirror state so the poll-driven effect never acts on stale closures.
+  const watchedRef = useRef<WatchedFlight[]>([]);
+  const armedRef = useRef<string | null>(null);
+  // Watchlist state lives here (above the refs that mirror it).
+  const [watched, setWatched] = useState<WatchedFlight[]>(() => {
+    const initial = loadWatchedFlights();
+    watchedRef.current = initial;
+    return initial;
+  });
+  useEffect(() => {
+    watchedRef.current = watched;
+  }, [watched]);
+  useEffect(() => {
+    armedRef.current = armedFlightCallsign;
+  }, [armedFlightCallsign]);
+
   const persistWatchList = (list: WatchedFlight[]) => {
+    watchedRef.current = list;
     try {
       for (const w of list) saveWatchedFlight(w);
     } catch (err) {
@@ -202,21 +199,45 @@ export default function FlightOperationsConsole() {
     rebuildRecordedTracks(list);
   };
 
-  const handleToggleWatch = (callsign: string) => {
+  // Rolling pre-watch position buffer: every live-radar poll stores one fix
+  // per airborne flight (cap 240 ≈ 48 min at 12s polls), plus recent VSI
+  // samples for smoothed landing-ETA ranking. When the user Watches a
+  // flight, the buffer seeds its recording so replay shows past positions,
+  // not just the tail observed after Watch. Tab-lifetime only (memory).
+  const POSITION_BUFFER_MAX = 240;
+  const positionBufferRef = useRef<Map<string, RecordedFix[]>>(new Map());
+  const vsiHistoryRef = useRef<Map<string, number[]>>(new Map());
+
+  const bufferKeyOf = (f: { icao24?: string; callsign?: string }) =>
+    (f.icao24 || f.callsign || "").toLowerCase();
+
+  const seedFixesFromBuffer = (key: string): RecordedFix[] =>
+    (positionBufferRef.current.get(key.toLowerCase()) || []).slice();
+
+  // Radar-contact loss tracking: a WATCHING flight missing from consecutive
+  // polls (coverage gap, landed outside receiver range) keeps its recording
+  // and stays replay-previewable; the UI flags it instead of going silent.
+  const missCountRef = useRef<Map<string, number>>(new Map());
+  const lostToastedRef = useRef<Set<string>>(new Set());
+  const [signalLostKeys, setSignalLostKeys] = useState<string[]>([]);
+  const markSignalLost = (key: string) =>
+    setSignalLostKeys((prev) => (prev.includes(key) ? prev : [...prev, key]));
+  const markSignalFound = (key: string) =>
+    setSignalLostKeys((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : prev));
+
+  const handleToggleWatch = async (callsign: string) => {
     const key = callsign.toLowerCase();
-    const existing = watched.find((w) => w.key === key);
+    const existing = watchedRef.current.find((w) => w.key === key);
     if (existing) {
       // Stop watching. Keep the recording if it has fixes (manual-clear retention).
-      if (typeof window !== "undefined" && (window as any).__flightTrackerApp) {
-        (window as any).__flightTrackerApp.stopWatch(key);
-      }
       if (existing.fixes.length >= 2 || existing.status === "LANDED_RECORDED") {
-        toast.info("Watch Stopped — Recording Kept", {
+        toast.info("Watch Stopped: Recording Kept", {
           description: `${existing.callsign} kept with ${existing.fixes.length} recorded fixes. Delete it explicitly to remove.`,
         });
       } else {
         removeWatchedFlight(key);
-        const next = watched.filter((w) => w.key !== key);
+        unregisterServerWatch(key, true);
+        const next = watchedRef.current.filter((w) => w.key !== key);
         rebuildRecordedTracks(next);
         toast.info("Watch Stopped", {
           description: `${existing.callsign} had too few fixes to keep; removed.`,
@@ -235,7 +256,7 @@ export default function FlightOperationsConsole() {
     }
     if (live.onGround) {
       toast.error("Cannot Watch Flight", {
-        description: `${live.callsign.toUpperCase()} is already on the ground — settle it from the Landed queue instead.`,
+        description: `${live.callsign.toUpperCase()} is already on the ground: settle it from the Landed queue instead.`,
       });
       return;
     }
@@ -245,41 +266,96 @@ export default function FlightOperationsConsole() {
         description: `Manual watch intent wins: ${live.callsign.toUpperCase()} will no longer auto-settle.`,
       });
     }
+    const entryKey = (live.icao24 || live.callsign).toLowerCase();
+    // 1. Seed from the rolling pre-watch buffer (past positions while tab was open).
+    let seed: RecordedFix[] = seedFixesFromBuffer(entryKey);
+    if (seed.length === 0 && live.callsign) {
+      seed = seedFixesFromBuffer(live.callsign.toLowerCase());
+    }
+    // 2. Backfill deeper history via OpenSky live track (free tracks/all, best-effort).
+    // Merged + sorted + deduped below; empty on coverage gaps (honest, never mocked).
+    if (live.icao24) {
+      try {
+        const res = await fetch(`/api/track-history?icao24=${encodeURIComponent(live.icao24)}`);
+        if (res.ok) {
+          const data = await res.json();
+          const past: RecordedFix[] = Array.isArray(data.fixes) ? data.fixes : [];
+          if (past.length > 0) {
+            const seen = new Set(seed.map((f) => f.t));
+            for (const f of past) {
+              if (
+                typeof f.t === "number" &&
+                typeof f.lat === "number" &&
+                typeof f.lon === "number" &&
+                !seen.has(f.t)
+              ) {
+                seed.push({
+                  t: f.t,
+                  lat: f.lat,
+                  lon: f.lon,
+                  altM: f.altM ?? 0,
+                  velMps: f.velMps ?? 0,
+                  vsiMps: f.vsiMps ?? 0,
+                  trackDeg: f.trackDeg ?? 0,
+                  onGround: Boolean(f.onGround),
+                });
+                seen.add(f.t);
+              }
+            }
+            seed.sort((a, b) => a.t - b.t);
+          }
+        }
+      } catch {
+        // Backfill is best-effort: live recording continues regardless.
+      }
+    }
+    if (seed.length > MAX_FIXES_PER_TRACK) seed = seed.slice(-MAX_FIXES_PER_TRACK);
     const entry: WatchedFlight = {
-      key: (live.icao24 || live.callsign).toLowerCase(),
+      key: entryKey,
       icao24: (live.icao24 || "").toLowerCase(),
       callsign: live.callsign.toUpperCase(),
       equipmentType: live.equipmentType,
       originCountry: live.originCountry,
       watchStartedAt: Date.now(),
       status: "WATCHING",
-      fixes: [],
+      fixes: seed,
     };
-    if (typeof window !== "undefined" && (window as any).__flightTrackerApp) {
-      (window as any).__flightTrackerApp.startWatch(entry.key);
-    }
-    const next = [entry, ...watched.filter((w) => w.key !== entry.key)];
+    const next = [entry, ...watchedRef.current.filter((w) => w.key !== entry.key)];
     persistWatchList(next);
-    toast.success("Watching Flight Path", {
-      description: `Recording ${entry.callsign} every radar poll. It stays pinned even off-camera; replay unlocks at touchdown.`,
-      duration: 8000,
-    });
+    // Durability: the sidecar keeps recording with tabs closed (best-effort).
+    registerServerWatch(entry);
+    toast.success(
+      seed.length >= 2
+        ? `Watching ${entry.callsign} (+${seed.length} past fixes)`
+        : `Watching Flight Path`,
+      {
+        description:
+          seed.length >= 2
+            ? `Seeded ${seed.length} past positions; recording every radar poll. Replay unlocks at touchdown with the full trajectory.`
+            : `Recording ${entry.callsign} every radar poll. It stays pinned even off-camera; replay unlocks at touchdown.`,
+        duration: 8000,
+      }
+    );
   };
 
   const handleWatchedTouchdown = (key: string) => {
-    const w = watched.find((x) => x.key === key.toLowerCase());
+    const w = watchedRef.current.find((x) => x.key === key.toLowerCase());
     if (!w || w.status === "LANDED_RECORDED") return;
-    let fixes: RecordedFix[] = w.fixes;
-    if (typeof window !== "undefined" && (window as any).__flightTrackerApp) {
-      const live = (window as any).__flightTrackerApp.getRecording(key) as RecordedFix[];
-      if (live.length > fixes.length) fixes = live;
-    }
+    const fixes: RecordedFix[] = w.fixes;
     const landed: WatchedFlight = { ...w, status: "LANDED_RECORDED", landedAt: Date.now(), fixes };
-    const next = watched.map((x) => (x.key === landed.key ? landed : x));
+    const next = watchedRef.current.map((x) => (x.key === landed.key ? landed : x));
     persistWatchList(next);
-    // Inject into the Landed queue as a replayable PENDING record.
-    // Direct settle is disabled for these cards (see queue): the flow is
-    // replay → verify → settle from the console, which prices the observed track.
+    injectLandedQueue(landed);
+    toast.success(`Touchdown Recorded: ${landed.callsign}`, {
+      description: `Path frozen with ${fixes.length} fixes over ${Math.round(observedSpanSeconds(landed) / 60)} min. Open its card, replay, verify, then settle manually.`,
+      duration: 10000,
+    });
+  };
+
+  // Injects a landed recording into the Landed queue as a replayable PENDING
+  // record. Direct settle is disabled for these cards (see queue): the flow is
+  // replay → verify → settle from the console, which prices the observed track.
+  const injectLandedQueue = (landed: WatchedFlight) => {
     const observed = observedSpanSeconds(landed);
     setLandedFlights((prev) => {
       if (prev.some((f) => f.id === `rec-${landed.key}`)) return prev;
@@ -312,10 +388,138 @@ export default function FlightOperationsConsole() {
       };
       return [rec, ...prev];
     });
-    toast.success(`Touchdown Recorded: ${landed.callsign}`, {
-      description: `Path frozen with ${fixes.length} fixes over ${Math.round(observed / 60)} min. Open its card, replay, verify, then settle manually.`,
-      duration: 10000,
+  };
+
+  // ---- Server-side recorder sync (sidecar keeps recording with tabs closed) ----
+  // The client registers Watch intent server-side (fire-and-forget; local
+  // recording continues regardless) and periodically merges server tracks back:
+  // union of fixes by timestamp, status flips to LANDED_RECORDED when the
+  // server observed touchdown — including landings that happened while no tab
+  // was open. No mock data involved: every fix is live ADS-B on both sides.
+  const serverDownToastedRef = useRef(false);
+
+  const registerServerWatch = (w: WatchedFlight) => {
+    fetch("/api/server-watch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        key: w.key,
+        icao24: w.icao24,
+        callsign: w.callsign,
+        equipmentType: w.equipmentType,
+        originCountry: w.originCountry,
+      }),
+    }).catch(() => {
+      if (!serverDownToastedRef.current) {
+        serverDownToastedRef.current = true;
+        toast.info("Server Recorder Offline", {
+          description:
+            "Recording locally in this tab only. Run `cd web && npm run recorder` in a second terminal — it keeps recording with tabs closed.",
+          duration: 12000,
+        });
+      }
     });
+  };
+
+  const unregisterServerWatch = (key: string, deleteTrack: boolean) => {
+    fetch(`/api/server-watch?key=${encodeURIComponent(key)}${deleteTrack ? "&delete=1" : ""}`, {
+      method: "DELETE",
+    }).catch(() => {});
+  };
+
+  const syncServerTracks = async () => {
+    let meta: Array<{
+      key: string;
+      icao24: string;
+      callsign: string;
+      equipmentType?: string;
+      originCountry?: string;
+      watchStartedAt: number;
+      status: "WATCHING" | "LANDED_RECORDED";
+      landedAt?: number;
+      fixCount: number;
+      truncated?: boolean;
+      auto?: boolean;
+    }>;
+    try {
+      const res = await fetch("/api/server-tracks");
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!Array.isArray(data.tracks) || data.tracks.length === 0) return;
+      meta = data.tracks;
+    } catch {
+      return;
+    }
+    const merged = [...watchedRef.current];
+    let dirty = false;
+    const newlyLanded: WatchedFlight[] = [];
+    for (const m of meta) {
+      const idx = merged.findIndex((x) => x.key === m.key);
+      const lw = idx >= 0 ? merged[idx] : undefined;
+      const needsFull =
+        !lw ||
+        m.fixCount > lw.fixes.length ||
+        (m.status === "LANDED_RECORDED" && lw.status !== "LANDED_RECORDED");
+      if (!needsFull) continue;
+      try {
+        const r = await fetch(`/api/server-tracks?key=${encodeURIComponent(m.key)}`);
+        if (!r.ok) continue;
+        const data = await r.json();
+        const track = data.track as (WatchedFlight & { fixes: RecordedFix[] }) | undefined;
+        if (!track || !Array.isArray(track.fixes)) continue;
+        if (!lw) {
+          const entry: WatchedFlight = {
+            key: track.key,
+            icao24: track.icao24 || "",
+            callsign: track.callsign,
+            equipmentType: track.equipmentType,
+            originCountry: track.originCountry,
+            watchStartedAt: track.watchStartedAt || Date.now(),
+            status: track.status === "LANDED_RECORDED" ? "LANDED_RECORDED" : "WATCHING",
+            landedAt: track.landedAt,
+            fixes: track.fixes,
+            truncated: track.truncated,
+            auto: track.auto ?? m.auto ?? false,
+          };
+          merged.unshift(entry);
+          dirty = true;
+          if (entry.status === "LANDED_RECORDED") newlyLanded.push(entry);
+        } else {
+          const seen = new Set(lw.fixes.map((f) => f.t));
+          const add = (track.fixes as RecordedFix[]).filter(
+            (f) => f && typeof f.t === "number" && typeof f.lat === "number" && !seen.has(f.t)
+          );
+          const landedFlip =
+            track.status === "LANDED_RECORDED" && lw.status !== "LANDED_RECORDED";
+          if (add.length > 0 || landedFlip) {
+            const fixes = [...lw.fixes, ...add]
+              .sort((a, b) => a.t - b.t)
+              .slice(-MAX_FIXES_PER_TRACK);
+            merged[idx] = {
+              ...lw,
+              fixes,
+              status: landedFlip ? "LANDED_RECORDED" : lw.status,
+              landedAt: track.landedAt ?? lw.landedAt,
+              truncated: track.truncated ?? lw.truncated,
+            };
+            dirty = true;
+            if (landedFlip) newlyLanded.push(merged[idx]);
+          }
+        }
+      } catch {
+        /* next key */
+      }
+    }
+    if (dirty) {
+      persistWatchList(merged);
+      for (const l of newlyLanded) {
+        injectLandedQueue(l);
+        toast.success(`Touchdown Recorded (server): ${l.callsign}`, {
+          description: `Recorded while tabs were closed: ${l.fixes.length} fixes. Open its card, replay, verify, then settle manually.`,
+          duration: 10000,
+        });
+      }
+    }
   };
 
   // Live Flights State
@@ -325,7 +529,7 @@ export default function FlightOperationsConsole() {
 
   // Replay tracks: bundled demo seed + user-recorded live tracks
   // (+ synthetic fixtures only with ?dev-synthetic=1). Replaces the old
-  // static scenario list — every replayable track is real recorded ADS-B.
+  // static scenario list: every replayable track is real recorded ADS-B.
   const [playableTracks, setPlayableTracks] = useState<PlayableTrack[]>([]);
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
@@ -333,9 +537,17 @@ export default function FlightOperationsConsole() {
     playableTracks.find((t) => t.id === selectedTrackId) || playableTracks[0] || null;
   const activeReplayFrames = activeTrack?.frames || [];
 
-  // Watchlist: live flights under path recording (globe watch → land → replay → settle)
-  const [watched, setWatched] = useState<WatchedFlight[]>(() => loadWatchedFlights());
+  // Watchlist keys for 2D map marker tinting (watched vs armed vs default).
   const watchedKeys = useMemo(() => watched.map((w) => w.key), [watched]);
+
+  // Landing-soon filter: live flights about to land, ranked by ETA.
+  // VSI history ref is mutated per poll (no re-render); include liveFlights
+  // so the memo recomputes every 12s radar tick.
+  const landingCandidates: LandingCandidate[] = useMemo(
+    () => rankLandingCandidates(liveFlights, vsiHistoryRef.current),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [liveFlights]
+  );
 
   // Load bundled demo seeds once, then rebuild the track list whenever
   // recordings change. Synthetic fixtures only behind the dev flag.
@@ -343,8 +555,10 @@ export default function FlightOperationsConsole() {
     let cancelled = false;
     loadBundledTracks().then((bundled) => {
       if (cancelled) return;
+      // Include in-progress WATCHING recordings (≥2 fixes) as replayable
+      // previews so a watched flight is visible immediately — not only after
+      // touchdown. recordedToTrack drops <2-fix tracks itself.
       const recorded = loadWatchedFlights()
-        .filter((w) => w.status === "LANDED_RECORDED")
         .map((w) => recordedToTrack(w, "recorded"))
         .filter((t): t is PlayableTrack => t !== null);
       const tracks = [...bundled, ...recorded, ...syntheticFixtureTracks()];
@@ -359,7 +573,6 @@ export default function FlightOperationsConsole() {
   const rebuildRecordedTracks = (list: WatchedFlight[]) => {
     setWatched(list);
     const recorded = list
-      .filter((w) => w.status === "LANDED_RECORDED")
       .map((w) => recordedToTrack(w, "recorded"))
       .filter((t): t is PlayableTrack => t !== null);
     setPlayableTracks((prev) => {
@@ -379,11 +592,11 @@ export default function FlightOperationsConsole() {
   }, [playableTracks, selectedTrackId]);
 
   const fmtZuluHM = (epochSec: number | null | undefined) => {
-    if (!epochSec) return "—";
+    if (!epochSec) return "--";
     try {
       return `${new Date(epochSec * 1000).toISOString().slice(11, 16)}Z`;
     } catch {
-      return "—";
+      return "--";
     }
   };
 
@@ -519,7 +732,17 @@ export default function FlightOperationsConsole() {
     const fetchLiveFlights = async () => {
       try {
         setIsLiveLoading(true);
-        const res = await fetch("/api/live-flights");
+        // Include watched/armed icao24s so the server keeps returning those
+        // contacts even after touchdown (on-ground states) — otherwise a
+        // watched landing silently vanishes and never flips to LANDED_RECORDED.
+        const watchKeys = new Set<string>();
+        for (const w of watchedRef.current) {
+          if (/^[0-9a-f]{4,6}$/.test(w.icao24)) watchKeys.add(w.icao24);
+        }
+        const armed = armedRef.current;
+        if (armed && /^[0-9a-f]{4,6}$/.test(armed)) watchKeys.add(armed);
+        const qs = watchKeys.size > 0 ? `?watch=${[...watchKeys].join(",")}` : "";
+        const res = await fetch(`/api/live-flights${qs}`);
         if (!res.ok) {
           console.warn("Live ADS-B radar acquiring signals...");
           return;
@@ -555,7 +778,11 @@ export default function FlightOperationsConsole() {
     };
 
     fetchLiveLanded();
-    const landedInterval = setInterval(fetchLiveLanded, 25000);
+    void syncServerTracks();
+    const landedInterval = setInterval(() => {
+      void fetchLiveLanded();
+      void syncServerTracks();
+    }, 25000);
 
     return () => {
       isMounted = false;
@@ -563,6 +790,127 @@ export default function FlightOperationsConsole() {
       clearInterval(landedInterval);
     };
   }, []);
+
+  // 2D-ONLY WATCH/ARM ENGINE (replaces the globe FlightTrackerApp): every
+  // live-radar poll appends one ADS-B fix to each WATCHING track and checks
+  // airborne→ground transitions for watched + armed flights.
+  useEffect(() => {
+    if (liveFlights.length === 0) return;
+    const byKey = new Map(
+      liveFlights.map((f) => [(f.icao24 || f.callsign).toLowerCase(), f])
+    );
+    const matchLive = (key: string, callsign: string) =>
+      byKey.get(key.toLowerCase()) ||
+      liveFlights.find(
+        (f) =>
+          f.callsign.toLowerCase() === callsign.toLowerCase() ||
+          (f.icao24 || "").toLowerCase() === key.toLowerCase()
+      );
+
+    // 0. Feed the rolling pre-watch buffer + VSI history for ALL live flights
+    // (powers landing-candidate ETA smoothing and Watch-time past seeding).
+    for (const f of liveFlights) {
+      if (f.latitude == null || f.longitude == null) continue;
+      const bKey = bufferKeyOf(f);
+      const buf = positionBufferRef.current.get(bKey) || [];
+      buf.push({
+        t: Date.now(),
+        lat: f.latitude,
+        lon: f.longitude,
+        altM: f.baroAltitudeMeters ?? 0,
+        velMps: f.velocityMps ?? 0,
+        vsiMps: f.verticalRateMps ?? 0,
+        trackDeg: f.trueTrackDeg ?? 0,
+        onGround: Boolean(f.onGround),
+      });
+      while (buf.length > POSITION_BUFFER_MAX) buf.shift();
+      positionBufferRef.current.set(bKey, buf);
+      if (positionBufferRef.current.size > 400) {
+        const oldest = positionBufferRef.current.keys().next().value;
+        if (oldest) positionBufferRef.current.delete(oldest);
+      }
+      const vh = vsiHistoryRef.current.get(bKey) || [];
+      vh.push(f.verticalRateMps ?? 0);
+      while (vh.length > 5) vh.shift();
+      vsiHistoryRef.current.set(bKey, vh);
+    }
+
+    // 1. Append one fix per WATCHING track (capped; manual-clear retention).
+    // A watch missing from the feed (coverage gap) is NOT dropped: misses are
+    // counted and flagged so the user sees "signal lost" instead of silence.
+    let grew = false;
+    const next = watchedRef.current.map((w) => {
+      if (w.status !== "WATCHING") return w;
+      const live = matchLive(w.key, w.callsign);
+      if (!live || live.latitude == null || live.longitude == null) {
+        const misses = (missCountRef.current.get(w.key) || 0) + 1;
+        missCountRef.current.set(w.key, misses);
+        if (misses === 5 && w.fixes.length >= 2 && !lostToastedRef.current.has(w.key)) {
+          lostToastedRef.current.add(w.key);
+          markSignalLost(w.key);
+          toast.warning(`Radar Contact Lost: ${w.callsign}`, {
+            description: `No ADS-B fix for ~60s (coverage gap or out of range). Recording kept with ${w.fixes.length} fixes — replay preview stays available and re-acquires automatically.`,
+            duration: 10000,
+          });
+        }
+        return w;
+      }
+      if (missCountRef.current.get(w.key)) {
+        missCountRef.current.delete(w.key);
+        lostToastedRef.current.delete(w.key);
+        markSignalFound(w.key);
+      }
+      if (w.fixes.length >= MAX_FIXES_PER_TRACK) {
+        if (!w.truncated) {
+          grew = true;
+          return { ...w, truncated: true };
+        }
+        return w;
+      }
+      grew = true;
+      const fix: RecordedFix = {
+        t: Date.now(),
+        lat: live.latitude,
+        lon: live.longitude,
+        altM: live.baroAltitudeMeters ?? 0,
+        velMps: live.velocityMps ?? 0,
+        vsiMps: live.verticalRateMps ?? 0,
+        trackDeg: live.trueTrackDeg ?? 0,
+        onGround: Boolean(live.onGround),
+      };
+      return { ...w, fixes: [...w.fixes, fix] };
+    });
+    if (grew) persistWatchList(next);
+
+    // 2. Touchdowns: watched flights freeze and queue for replay → settle.
+    for (const w of watchedRef.current) {
+      if (w.status !== "WATCHING") continue;
+      const live = matchLive(w.key, w.callsign);
+      if (live && live.onGround) handleWatchedTouchdown(w.key);
+    }
+
+    // 3. Armed auto-settle: touchdown executes the on-chain retirement.
+    const armedKey = armedRef.current;
+    if (armedKey) {
+      const live =
+        byKey.get(armedKey.toLowerCase()) ||
+        liveFlights.find(
+          (f) =>
+            f.callsign.toLowerCase() === armedKey.toLowerCase() ||
+            (f.icao24 || "").toLowerCase() === armedKey.toLowerCase()
+        );
+      if (live && live.onGround) {
+        toast.info(`Touchdown Confirmed: ${live.callsign}`, {
+          description: `Autonomous agent triggering verified carbon offset settlement on Arc Testnet...`,
+        });
+        clearArmTimer();
+        setArmedFlightCallsign(null);
+        void triggerWheelsDownSettlement(live);
+      }
+    }
+    // Effect is intentionally poll-driven: fresh closures each liveFlights tick.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveFlights]);
 
   // Telemetry Calculations
   const activeData = mode === "replay" ? activeReplayFrame : selectedFlight;
@@ -659,16 +1007,19 @@ export default function FlightOperationsConsole() {
     // Pre-flight treasury spend guard: verify real USDC covers the pull before broadcasting.
     // BYOK settles from the visitor's own wallet, so the guard checks that address.
     {
-      const { checkTreasuryFunds, formatShortfall, FAUCET_HINT } = await import(
+      const { checkTreasuryFunds } = await import(
         "@/lib/treasury-guard"
       );
       const neededMicro = BigInt(Math.round(usdcCost * 1_000_000));
       const guardTreasury = byokKey && byokAddress ? byokAddress : activeWalletAddress;
       const funds = await checkTreasuryFunds(guardTreasury, neededMicro);
       if (!funds.ok) {
-        toast.error("Insufficient Treasury USDC", {
-          description: `${formatShortfall(funds)}. ${FAUCET_HINT}`,
-          duration: 12000,
+        const { insufficientFundsToast } = await import("@/lib/treasury-guard");
+        const t = insufficientFundsToast(funds, guardTreasury);
+        toast.error(t.title, {
+          description: t.description,
+          duration: t.duration,
+          action: t.action,
         });
         return;
       }
@@ -839,7 +1190,7 @@ export default function FlightOperationsConsole() {
           : (activeTrack?.originAirport || "ENR"),
         destinationAirport: isLive ? "RADAR" : (activeTrack?.destinationAirport || "RADAR"),
         destinationName: isLive ? "Live Airspace Track" : (activeTrack?.destinationName || "Recorded live airspace"),
-        runway: isLive ? "ENROUTE" : (activeTrack?.runway || "—"),
+        runway: isLive ? "ENROUTE" : (activeTrack?.runway || "--"),
         icao24: isLive ? (selectedFlight?.icao24 || "39DE4E") : (activeTrack?.icao24 || callsign.toLowerCase()),
         airborneSeconds,
         fuelBurnKg,
@@ -908,7 +1259,7 @@ export default function FlightOperationsConsole() {
           : (activeTrack?.originAirport || "ENR"),
         destinationAirport: isLive ? "RADAR" : (activeTrack?.destinationAirport || "RADAR"),
         destinationName: isLive ? "Live Airspace Sector" : (activeTrack?.destinationName || "Recorded live airspace"),
-        runway: isLive ? "ENROUTE" : (activeTrack?.runway || "—"),
+        runway: isLive ? "ENROUTE" : (activeTrack?.runway || "--"),
         icao24: isLive ? (selectedFlight?.icao24 || "39DE4E") : (activeTrack?.icao24 || "39DE4E"),
         airborneSeconds: isLive ? 3600 : (activeTrack?.plannedAirborneSeconds || 0),
         fuelBurnKg,
@@ -987,8 +1338,23 @@ export default function FlightOperationsConsole() {
     }
   };
 
+  // 2D selection ↔ watch/arm derivation (drives card buttons + map tinting).
+  const selectedWatchEntry =
+    mode === "live" && selectedFlight
+      ? watched.find(
+          (w) =>
+            w.key === (selectedFlight.icao24 || selectedFlight.callsign).toLowerCase() ||
+            w.callsign.toLowerCase() === selectedFlight.callsign.toLowerCase()
+        )
+      : undefined;
+  const isSelectedArmed =
+    mode === "live" && selectedFlight && armedFlightCallsign
+      ? armedFlightCallsign === selectedFlight.callsign.toLowerCase() ||
+        armedFlightCallsign === (selectedFlight.icao24 || "").toLowerCase()
+      : false;
+
   return (
-    <div className="h-screen w-full bg-[#2d353b] text-[#d3c6aa] font-mono flex overflow-hidden select-none">
+    <div className="h-screen w-full bg-[#ECEBE6] text-[#111111] font-sans flex overflow-hidden select-none">
       <div className="ops-grain" aria-hidden="true" />
       {/* ── 1. ULTRA-SLIM NAVIGATION DOCK (56px) ── */}
       <NavigationDock
@@ -1039,6 +1405,11 @@ export default function FlightOperationsConsole() {
           isCreditsLoading={isCreditsLoading}
           onOpenCommandSearch={() => setIsCommandOpen(true)}
           className="h-full"
+          isWatched={Boolean(selectedWatchEntry)}
+          isArmed={isSelectedArmed}
+          watchFixCount={selectedWatchEntry?.fixes.length || 0}
+          onToggleWatch={handleToggleWatch}
+          onToggleArm={handleToggleArmSettlement}
         />
       </div>
 
@@ -1067,25 +1438,25 @@ export default function FlightOperationsConsole() {
             />
           </div>
         ) : mode === "replay" && !activeTrack ? (
-          <div className="w-full h-full flex flex-col items-center justify-center gap-3 text-center p-8 border border-dashed border-[#d3c6aa]/16 bg-[#1e2528]">
-            <div className="font-mono text-sm font-semibold text-[#d3c6aa]">
+          <div className="w-full h-full flex flex-col items-center justify-center gap-3 text-center p-8 border border-[#D4D3CD] rounded-xl bg-[#D6D5CF]">
+            <div className="font-sans text-sm font-semibold text-[#111111]">
               No replay track available
             </div>
-            <div className="text-xs text-[#859289] font-mono leading-relaxed max-w-sm">
-              Replay plays real recorded ADS-B — never fabricated telemetry. Watch
-              a live flight on the radar globe to record its path, or wait for the
+            <div className="text-xs text-[#555555] font-sans leading-relaxed max-w-sm">
+              Replay plays real recorded ADS-B: never fabricated telemetry. Watch
+              a live flight on the 2D radar to record its path, or wait for the
               bundled demo track.
             </div>
             <button
               type="button"
               onClick={() => switchMode("live")}
-              className="mt-1 px-4 py-2 bg-[#d3c6aa]/10 hover:bg-[#d3c6aa]/20 text-xs text-[#d3c6aa] cursor-pointer transition-colors font-mono border border-dashed border-[#d3c6aa]/16"
+              className="btn-pill mt-1 px-4 py-2 bg-[#111111] hover:bg-[#FF4D00] text-xs text-[#ECEBE6] cursor-pointer transition-colors font-sans"
             >
               Back to Live Radar
             </button>
           </div>
         ) : (
-          <div className="relative w-full h-full overflow-hidden border border-dashed border-[#d3c6aa]/16 bg-[#1e2528]">
+          <div className="relative w-full h-full overflow-hidden border border-[#D4D3CD] rounded-xl bg-[#ECEBE6]">
             {/* Top Floating Descent Timeline Bar (Matching Reference Top Scale) */}
             <div className="absolute top-3 left-3 right-3 z-30">
               <DescentTimelineBar
@@ -1153,8 +1524,8 @@ export default function FlightOperationsConsole() {
                 real takeoff/touchdown leg data; click selects, the single
                 timeline Settle button settles the selected track. */}
             {mode === "replay" && playableTracks.length > 0 && (
-              <div className="absolute left-3 top-[76px] z-30 w-72 max-w-[calc(100%-24px)] max-h-[calc(100%-180px)] overflow-y-auto bg-[#1e2528]/95 backdrop-blur-md border border-dashed border-[#d3c6aa]/16">
-                <div className="px-3 py-2 text-[10px] font-mono uppercase tracking-wider text-[#859289] border-b border-dashed border-[#d3c6aa]/16 sticky top-0 bg-[#1e2528]">
+              <div className="absolute left-3 top-[76px] z-30 w-72 max-w-[calc(100%-24px)] max-h-[calc(100%-180px)] overflow-y-auto bg-[#ECEBE6]/95 backdrop-blur-md rounded-xl border border-[#D4D3CD] shadow-lg">
+                <div className="px-3 py-2 text-[10px] font-mono uppercase tracking-wider text-[#555555] border-b border-[#D4D3CD] sticky top-0 bg-[#ECEBE6]">
                   Landed Flights · Real Tracks ({playableTracks.length})
                 </div>
                 {playableTracks.slice(0, 6).map((t) => {
@@ -1165,32 +1536,32 @@ export default function FlightOperationsConsole() {
                       key={t.id}
                       type="button"
                       onClick={() => selectTrack(t.id)}
-                      className={`w-full text-left px-3 py-2.5 border-b border-dashed border-[#d3c6aa]/[0.08] transition-colors cursor-pointer ${
-                        selected ? "bg-[#d3c6aa]/10" : "hover:bg-[#d3c6aa]/[0.05]"
+                      className={`w-full text-left px-3 py-2.5 border-b border-[#D4D3CD] transition-colors cursor-pointer ${
+                        selected ? "bg-[#D6D5CF]" : "hover:bg-[#D6D5CF]/50"
                       }`}
                     >
                       <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs font-bold text-[#d3c6aa]">
+                        <span className="font-mono text-xs font-bold text-[#111111]">
                           {t.callsign}
                         </span>
-                        <span
-                          className={`px-1.5 py-0.5 text-[9px] font-mono font-bold ${
-                            t.source === "synthetic"
-                              ? "bg-[#dbbc7f]/15 text-[#dbbc7f] border border-dashed border-[#dbbc7f]/40"
-                              : "bg-[#7fbbb3]/15 text-[#7fbbb3] border border-dashed border-[#7fbbb3]/40"
-                          }`}
-                        >
+                        <span className="btn-pill px-1.5 py-0.5 text-[9px] font-mono font-bold bg-[#ECEBE6] text-[#555555] border border-[#D4D3CD]">
                           {t.source === "synthetic"
                             ? "SYNTHETIC FIXTURE"
                             : t.source === "bundled"
                             ? "RECORDED · DEMO"
+                            : t.autoRecorded
+                            ? t.inProgress
+                              ? `AUTO · RECORDING · ${t.fixCount || 0} FIXES`
+                              : `AUTO · RECORDED · ${t.fixCount || 0} FIXES`
+                            : t.inProgress
+                            ? `RECORDING · ${t.fixCount || 0} FIXES`
                             : `RECORDED · ${t.fixCount || 0} FIXES`}
                         </span>
                         {selected && (
-                          <span className="ml-auto w-2 h-2 bg-[#a7c080] blink-step shrink-0" />
+                          <span className="ml-auto w-2 h-2 rounded-full bg-[#FF4D00] animate-pulse shrink-0" />
                         )}
                       </div>
-                      <div className="text-[10.5px] font-mono text-[#859289] mt-1">
+                      <div className="text-[10.5px] font-mono text-[#555555] mt-1">
                         {leg?.depAirport || leg?.firstSeen ? (
                           <span>
                             TO {leg?.depAirport || "???"} {fmtZuluHM(leg?.firstSeen)} → TD{" "}
@@ -1209,40 +1580,113 @@ export default function FlightOperationsConsole() {
               </div>
             )}
 
-            {/* Fullscreen Map Canvas (3D Cesium Globe vs 2D Leaflet Radar) */}
+            {/* About-to-land filter (live mode): descending + near hub, ranked
+                by smoothed-VSI ETA. Watch seeds past positions (buffer +
+                OpenSky track backfill) so replay shows the full trajectory;
+                after replay finishes, settle from the timeline button. */}
+            {mode === "live" && (
+              <div className="absolute left-3 top-[76px] z-30 w-72 max-w-[calc(100%-24px)] max-h-[calc(100%-180px)] overflow-y-auto bg-[#ECEBE6]/95 backdrop-blur-md rounded-xl border border-[#D4D3CD] shadow-lg">
+                <div className="px-3 py-2 text-[10px] font-mono uppercase tracking-wider text-[#555555] border-b border-[#D4D3CD] sticky top-0 bg-[#ECEBE6]">
+                  About to Land · Live Filter ({landingCandidates.length})
+                </div>
+                {/* Active watches: always visible so a selected flight never
+                    seems to vanish — recording count, landing state, signal. */}
+                {watched.filter((w) => w.status === "WATCHING").map((w) => {
+                  const lost = signalLostKeys.includes(w.key);
+                  return (
+                    <div
+                      key={`watching-${w.key}`}
+                      className="px-3 py-2.5 border-b border-[#D4D3CD] bg-[#D6D5CF]/60"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs font-bold text-[#111111]">
+                          {w.callsign}
+                        </span>
+                        <span
+                          className={`btn-pill px-1.5 py-0.5 text-[9px] font-mono font-bold border ${
+                            lost
+                              ? "bg-[#ECEBE6] text-[#FF4D00] border-[#FF4D00]"
+                              : "bg-[#111111] text-[#ECEBE6] border-[#111111]"
+                          }`}
+                        >
+                          {lost ? "SIGNAL LOST" : `RECORDING · ${w.fixes.length} FIXES`}
+                        </span>
+                      </div>
+                      <div className="text-[10.5px] font-mono text-[#555555] mt-1">
+                        {lost
+                          ? "Coverage gap — recording kept, replay preview in Replay tab."
+                          : "Recording every radar poll — replay unlocks fully at touchdown."}
+                      </div>
+                    </div>
+                  );
+                })}
+                {landingCandidates.length === 0 && (
+                  <div className="px-3 py-3 text-[11px] font-mono text-[#555555] leading-relaxed">
+                    {isLiveLoading
+                      ? "Scanning descent profiles…"
+                      : "No descending arrivals near FRA/CDG/LHR/AMS right now. Watch any airborne flight instead."}
+                  </div>
+                )}
+                {landingCandidates.map((c) => {
+                  const wk =
+                    c.flight.icao24?.toLowerCase() === selectedFlight?.icao24?.toLowerCase() ||
+                    c.flight.callsign.toLowerCase() === selectedFlight?.callsign?.toLowerCase();
+                  const alreadyWatched = watchedKeys.some(
+                    (k) =>
+                      k === (c.flight.icao24 || "").toLowerCase() ||
+                      k === c.flight.callsign.toLowerCase()
+                  );
+                  return (
+                    <div
+                      key={`${c.flight.icao24}-${c.flight.callsign}`}
+                      className={`w-full text-left px-3 py-2.5 border-b border-[#D4D3CD] ${wk ? "bg-[#D6D5CF]" : ""}`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setSelectedFlight(c.flight)}
+                        className="w-full text-left cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-xs font-bold text-[#111111]">
+                            {c.flight.callsign}
+                          </span>
+                          <span className="btn-pill px-1.5 py-0.5 text-[9px] font-mono font-bold bg-[#ECEBE6] text-[#555555] border border-[#D4D3CD]">
+                            → {c.hubIata}
+                          </span>
+                          {c.etaMin != null && (
+                            <span className="ml-auto font-mono text-[10px] font-bold text-[#FF4D00] tabular-nums shrink-0">
+                              ~{c.etaMin} min
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10.5px] font-mono text-[#555555] mt-1 tabular-nums">
+                          {Math.round(c.altM * 3.28084).toLocaleString()} ft ·{" "}
+                          {c.vsiSmoothedMps.toFixed(1)} m/s · {c.distKm} km to {c.hubIata}
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedFlight(c.flight);
+                          void handleToggleWatch(c.flight.callsign);
+                        }}
+                        disabled={alreadyWatched}
+                        className={`btn-pill mt-1.5 w-full py-1.5 font-mono text-[11px] font-semibold border transition-[transform,opacity,background-color] duration-140 active:scale-[0.98] cursor-pointer ${
+                          alreadyWatched
+                            ? "bg-[#D6D5CF] border-[#D4D3CD] text-[#555555]"
+                            : "bg-[#111111] border-[#111111] text-[#ECEBE6] hover:bg-[#FF4D00] hover:border-[#FF4D00]"
+                        }`}
+                      >
+                        {alreadyWatched ? "Watching · replay at touchdown" : "Watch + record full track"}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Fullscreen Map Canvas (2D Leaflet Radar only on this branch) */}
             <div className="w-full h-full">
-              {mapEngine === "3d" ? (
-                <CesiumGlobeViewer
-                  selectedIcao={selectedFlight?.icao24 || selectedFlight?.callsign?.toLowerCase()}
-                  armedIcao={armedFlightCallsign}
-                  onToggleArm={handleToggleArmSettlement}
-                  onArmedTouchdown={handleArmedTouchdown}
-                  watchedKeys={watchedKeys}
-                  onToggleWatch={handleToggleWatch}
-                  onWatchedTouchdown={handleWatchedTouchdown}
-                  onSwitchToLandedTab={() => setActiveNavTab("landed")}
-                  landedCount={landedPendingCount}
-                  onSelectFlight={(meta, enrichment) => {
-                    if (meta) {
-                      setSelectedFlight({
-                        icao24: meta.icao24 || meta.callsign.toLowerCase(),
-                        callsign: meta.callsign,
-                        originCountry: enrichment?.operator || "Commercial Airspace",
-                        longitude: meta.lon,
-                        latitude: meta.lat,
-                        baroAltitudeMeters: Math.round(meta.altitudeM),
-                        velocityMps: Math.round(meta.velocityMps),
-                        trueTrackDeg: Math.round(meta.trueTrackDeg),
-                        verticalRateMps: meta.verticalRateMps,
-                        onGround: meta.onGround,
-                        equipmentType: enrichment?.model || enrichment?.type || "A320-200",
-                      });
-                    } else {
-                      setSelectedFlight(null);
-                    }
-                  }}
-                />
-              ) : (
                 <WindyFlightMap
                   mode={mode}
                   liveFlights={liveFlights}
@@ -1251,26 +1695,27 @@ export default function FlightOperationsConsole() {
                   replayTrack={mode === "replay" ? activeReplayFrames : []}
                   destinationLabel={
                     mode === "replay"
-                      ? `${activeTrack?.destinationAirport || "RADAR"} Runway ${activeTrack?.runway || "—"}`
+                      ? `${activeTrack?.destinationAirport || "RADAR"} Runway ${activeTrack?.runway || "--"}`
                       : undefined
                   }
                   onSelectFlight={(flight) => {
                     setSelectedFlight(flight as LiveFlightSummary);
                   }}
+                  watchedKeys={watchedKeys}
+                  armedKey={armedFlightCallsign}
                 />
-              )}
             </div>
 
-            {/* Bottom Left: Mode Switcher & 3D/2D Engine Toggle */}
+            {/* Bottom Left: Mode Switcher (Live vs Replay) */}
             <div className="absolute bottom-3 left-3 z-30 pointer-events-auto flex items-center gap-2">
-              <div className="bg-[#1e2528]/90 backdrop-blur-md px-3 py-1.5 border border-dashed border-[#d3c6aa]/16 flex items-center gap-2 text-xs">
+              <div className="bg-[#ECEBE6]/95 backdrop-blur-md p-1 rounded-full border border-[#D4D3CD] shadow-sm flex items-center gap-1 text-xs">
                 <button
                   type="button"
                   onClick={() => switchMode("replay")}
-                  className={`px-3 py-1 font-mono font-medium transition-[transform,colors] duration-140 active:scale-[0.96] cursor-pointer ${
+                  className={`btn-pill px-3 py-1 font-sans text-xs transition-colors cursor-pointer ${
                     mode === "replay"
-                      ? "bg-[#d3c6aa] text-[#2d353b]"
-                      : "text-[#859289] hover:text-[#d3c6aa]"
+                      ? "bg-[#111111] text-[#ECEBE6] font-semibold"
+                      : "text-[#555555] hover:text-[#111111]"
                   }`}
                 >
                    Replay Track
@@ -1278,42 +1723,14 @@ export default function FlightOperationsConsole() {
                 <button
                   type="button"
                   onClick={() => switchMode("live")}
-                  className={`px-3 py-1 font-mono font-medium transition-[transform,colors] duration-140 active:scale-[0.96] cursor-pointer flex items-center gap-1.5 ${
+                  className={`btn-pill px-3 py-1 font-sans text-xs transition-colors cursor-pointer flex items-center gap-1.5 ${
                     mode === "live"
-                      ? "bg-[#d3c6aa] text-[#2d353b]"
-                      : "text-[#859289] hover:text-[#d3c6aa]"
+                      ? "bg-[#111111] text-[#ECEBE6] font-semibold"
+                      : "text-[#555555] hover:text-[#111111]"
                   }`}
                 >
-                  <span className="w-2 h-2 bg-[#a7c080] blink-step" />
+                  <span className="w-2 h-2 rounded-full bg-[#FF4D00] animate-pulse" />
                   <span>Live Radar</span>
-                </button>
-              </div>
-
-              {/* 3D vs 2D Engine Selector */}
-              <div className="bg-[#1e2528]/90 backdrop-blur-md p-1 border border-dashed border-[#d3c6aa]/16 flex items-center gap-1 text-xs font-mono">
-                <button
-                  type="button"
-                  onClick={() => setMapEngine("3d")}
-                  className={`flex items-center gap-1.5 px-3 py-1 font-semibold transition-[transform,colors] duration-140 active:scale-[0.96] cursor-pointer ${
-                    mapEngine === "3d"
-                      ? "bg-[#a7c080] text-[#2d353b]"
-                      : "text-[#859289] hover:text-[#d3c6aa]"
-                  }`}
-                >
-                  <Globe2 className="w-3.5 h-3.5" />
-                  <span>3D Globe</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMapEngine("2d")}
-                  className={`flex items-center gap-1.5 px-3 py-1 font-semibold transition-[transform,colors] duration-140 active:scale-[0.96] cursor-pointer ${
-                    mapEngine === "2d"
-                      ? "bg-[#a7c080] text-[#2d353b]"
-                      : "text-[#859289] hover:text-[#d3c6aa]"
-                  }`}
-                >
-                  <Map className="w-3.5 h-3.5" />
-                  <span>2D Map</span>
                 </button>
               </div>
             </div>
@@ -1322,17 +1739,17 @@ export default function FlightOperationsConsole() {
           <div className="absolute bottom-3 right-3 z-30 flex flex-col items-end pointer-events-auto">
             {/* Expandable Drawer Panel */}
             {isIntegrityOpen && (
-              <div className="mb-2 w-[420px] max-w-[calc(100vw-48px)] bg-[#1e2528]/95 backdrop-blur-md border border-dashed border-[#d3c6aa]/16 p-3.5 space-y-3 animate-in fade-in zoom-in-95 duration-140">
+              <div className="mb-2 w-[420px] max-w-[calc(100vw-48px)] bg-[#ECEBE6]/95 backdrop-blur-md border border-[#D4D3CD] rounded-xl shadow-lg p-3.5 space-y-3 animate-in fade-in zoom-in-95 duration-140">
                 {/* Tab Selector */}
-                <div className="flex items-center justify-between border-b border-dashed border-[#d3c6aa]/16 pb-2">
+                <div className="flex items-center justify-between border-b border-[#D4D3CD] pb-2">
                   <div className="flex items-center gap-1.5 text-xs">
                     <button
                       type="button"
                       onClick={() => setActiveIntegrityTab("fuel")}
-                      className={`px-3 py-1 font-mono font-medium transition-[transform,colors] duration-140 cursor-pointer active:scale-[0.96] ${
+                      className={`btn-pill px-3 py-1 font-sans text-xs transition-colors cursor-pointer ${
                         activeIntegrityTab === "fuel"
-                          ? "bg-[#d3c6aa] text-[#2d353b]"
-                          : "text-[#859289] hover:text-[#d3c6aa]"
+                          ? "bg-[#111111] text-[#ECEBE6] font-semibold"
+                          : "text-[#555555] hover:text-[#111111]"
                       }`}
                     >
                       Fuel Flow Dynamics
@@ -1340,10 +1757,10 @@ export default function FlightOperationsConsole() {
                     <button
                       type="button"
                       onClick={() => setActiveIntegrityTab("integrity")}
-                      className={`px-3 py-1 font-mono font-medium transition-[transform,colors] duration-140 cursor-pointer active:scale-[0.96] ${
+                      className={`btn-pill px-3 py-1 font-sans text-xs transition-colors cursor-pointer ${
                         activeIntegrityTab === "integrity"
-                          ? "bg-[#d3c6aa] text-[#2d353b]"
-                          : "text-[#859289] hover:text-[#d3c6aa]"
+                          ? "bg-[#111111] text-[#ECEBE6] font-semibold"
+                          : "text-[#555555] hover:text-[#111111]"
                       }`}
                     >
                       Settlement Integrity
@@ -1353,7 +1770,7 @@ export default function FlightOperationsConsole() {
                     type="button"
                     onClick={() => setIsIntegrityOpen(false)}
                     aria-label="Collapse Panel"
-                    className="text-[#859289] hover:text-[#d3c6aa] p-1 hover:bg-[#d3c6aa]/10 cursor-pointer transition-colors duration-140"
+                    className="icon-circle text-[#555555] hover:text-[#111111] p-1 cursor-pointer transition-colors"
                   >
                     <ChevronDown className="w-4 h-4" />
                   </button>
@@ -1373,7 +1790,7 @@ export default function FlightOperationsConsole() {
                     isSettling={isSettling}
                     settlementTxHash={settlementTxHash}
                     blockNumber={certificateData?.blockNumber}
-                    runway={mode === "replay" ? (activeTrack?.runway || "—") : "25L"}
+                    runway={mode === "replay" ? (activeTrack?.runway || "--") : "25L"}
                     destinationAirport={mode === "replay" ? (activeTrack?.destinationAirport || "RADAR") : "EDDF"}
                   />
                 )}
@@ -1384,15 +1801,15 @@ export default function FlightOperationsConsole() {
             <button
               type="button"
               onClick={() => setIsIntegrityOpen((prev) => !prev)}
-              className="px-3 py-1.5 bg-[#1e2528]/90 backdrop-blur-md border border-dashed border-[#d3c6aa]/16 flex items-center gap-2 text-xs font-mono font-medium text-[#9daaa4] hover:text-[#d3c6aa] cursor-pointer active:scale-[0.96] transition-[transform,colors] duration-140"
+              className="btn-pill px-3.5 py-1.5 bg-[#ECEBE6]/95 backdrop-blur-md border border-[#D4D3CD] shadow-sm flex items-center gap-2 text-xs font-sans text-[#111111] hover:text-[#FF4D00] cursor-pointer transition-colors"
             >
-              <Activity className="w-3.5 h-3.5 text-[#a7c080]" />
+              <Activity className="w-3.5 h-3.5 text-[#FF4D00]" />
               <span>Avionics & Telemetry Integrity</span>
-              <span className="w-1.5 h-1.5 bg-[#a7c080] blink-step" />
+              <span className="w-1.5 h-1.5 rounded-full bg-[#FF4D00] animate-pulse" />
               {isIntegrityOpen ? (
-                <ChevronDown className="w-3.5 h-3.5 text-[#859289]" />
+                <ChevronDown className="w-3.5 h-3.5 text-[#555555]" />
               ) : (
-                <ChevronUp className="w-3.5 h-3.5 text-[#859289]" />
+                <ChevronUp className="w-3.5 h-3.5 text-[#555555]" />
               )}
             </button>
           </div>
