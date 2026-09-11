@@ -1,8 +1,22 @@
 "use client";
 
 import React from "react";
-import { PrivyProvider } from "@privy-io/react-auth";
+import dynamic from "next/dynamic";
 import { privyConfig, isPrivyConfigured } from "../lib/privy-config";
+
+/**
+ * Privy is ~2MB+ (wagmi/viem). Loading it statically inside the root layout
+ * balloons app/layout.js (observed 18MB dev chunk) and trips ChunkLoadError
+ * timeouts. Load it in a separate async client-only chunk instead; children
+ * render immediately so SSR/landing content never flashes or blocks.
+ */
+const PrivyProviderNoSSR = dynamic(
+  () =>
+    import("@privy-io/react-auth").then((mod) => ({
+      default: mod.PrivyProvider,
+    })),
+  { ssr: false }
+);
 
 /**
  * Catches Privy initialization crashes (e.g. malformed NEXT_PUBLIC_PRIVY_APP_ID)
@@ -35,9 +49,9 @@ export default function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <PrivyGuard>
-      <PrivyProvider appId={privyConfig.appId} config={privyConfig.config}>
+      <PrivyProviderNoSSR appId={privyConfig.appId} config={privyConfig.config}>
         {children}
-      </PrivyProvider>
+      </PrivyProviderNoSSR>
     </PrivyGuard>
   );
 }

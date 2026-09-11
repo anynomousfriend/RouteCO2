@@ -1,4 +1,25 @@
-import { arcTestnet } from "./arc-client";
+import type { Chain } from "viem";
+
+/**
+ * Minimal Arc Testnet chain descriptor. Deliberately NOT imported from
+ * arc-client.ts: that module pulls the full viem runtime, which would land in
+ * the root layout chunk via Providers and re-trigger ChunkLoadError timeouts.
+ * `import type` is fully erased at build time: zero runtime bytes.
+ * Ground truth: developers.circle.com: Arc Testnet 5042002, native gas USDC,
+ * RPC https://rpc.testnet.arc.network, explorer https://testnet.arcscan.app.
+ */
+export const arcTestnet: Chain = {
+  id: 5042002,
+  name: "Arc Testnet",
+  nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 6 },
+  rpcUrls: {
+    default: { http: ["https://rpc.testnet.arc.network"] },
+    public: { http: ["https://rpc.testnet.arc.network"] },
+  },
+  blockExplorers: {
+    default: { name: "ArcScan", url: "https://testnet.arcscan.app" },
+  },
+};
 
 /**
  * Ground truth (@privy-io/react-auth PrivyProvider): the SDK throws
@@ -14,7 +35,7 @@ export const isPrivyConfigured = Boolean(
 
 /**
  * Privy key quorum + policy for scoped flight-manifest session delegation.
- * Ground truth: docs.privy.io — Dashboard > Wallet infrastructure > Authorization keys
+ * Ground truth: docs.privy.io: Dashboard > Wallet infrastructure > Authorization keys
  * (key quorum ID) + Policies (contract whitelist + spend cap + expiry); client adds the
  * quorum via useSigners().addSigners({ address, signers: [{ signerId, policyIds }] }).
  * Missing values mean delegation falls back to explicit local state (labeled in UI).
@@ -27,8 +48,8 @@ export const privyConfig = {
   appId: process.env.NEXT_PUBLIC_PRIVY_APP_ID || "cl00000000000000000000000",
   config: {
     appearance: {
-      theme: "dark" as const,
-      accentColor: "#7C4DFF" as `#${string}`, // RouteCO2 Violet
+      theme: "light" as const,
+      accentColor: "#FF4D00" as `#${string}`,
       showWalletLoginFirst: true,
       logo: "/favicon.svg",
     },

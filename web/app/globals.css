@@ -1,28 +1,54 @@
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@import "leaflet/dist/leaflet.css";
-@import "cesium/Build/Cesium/Widgets/widgets.css";
+/* NOTE: leaflet vendor CSS is imported by WindyFlightMap,
+   so the root layout CSS stays tiny. */
 
-/* ================= EVERFOREST TOKENS (matches landing page routeco2.css) ================= */
+/* ================= MINIMALIST ARCHITECTURAL TOKENS ================= */
 :root {
-  --bg0: #2d353b; --bg1: #343f44; --bg2: #3d484d; --bg3: #475258; --bg4: #4f585e;
-  --bg-dim: #272e33; --bg-deep: #1e2528;
-  --fg: #d3c6aa; --grey1: #859289; --grey2: #9daaa4;
-  --red: #e67e80; --orange: #e69875; --yellow: #dbbc7f;
-  --green: #a7c080; --aqua: #83c092; --blue: #7fbbb3;
-  --line: rgba(211, 198, 170, 0.16);
-  --line-soft: rgba(211, 198, 170, 0.09);
-  --mono: "IBM Plex Mono", ui-monospace, monospace;
+  /* Phase 1: Palette & Base Surfaces */
+  --canvas: #ECEBE6;         /* Uniform warm-toned off-white engineering paper / bone */
+  --panel: #D6D5CF;          /* Light monochrome panel */
+  --panel-subtle: #DFDED9;   /* Subtle elevated surface */
+  --panel-contrast: #E3E2DC; /* Slight tint variation */
+  --panel-paper: #F3F2EE;    /* Archival certificate surface */
+  
+  --border: #D4D3CD;         /* Razor-thin uniform 1px medium gray */
+  --border-subtle: #DEDDD7;  /* Faint inner divider */
+  --border-strong: #BCBBB5;  /* High-emphasis hairline */
+
+  --charcoal: #111111;       /* High-contrast matte charcoal-black */
+  --charcoal-muted: #555555; /* Secondary labels & metadata */
+  --charcoal-faint: #888888; /* Tertiary micro-type */
+
+  --orange: #FF4D00;         /* The single stark industrial safety orange action accent */
+  --orange-hover: #E64A19;
+  --orange-faint: rgba(255, 77, 0, 0.12);
+
+  /* Legacy variable compatibility */
+  --bg0: var(--canvas);
+  --bg1: var(--panel);
+  --bg2: var(--panel-subtle);
+  --bg3: var(--border);
+  --bg-dim: var(--panel);
+  --bg-deep: var(--canvas);
+  --fg: var(--charcoal);
+  --grey1: var(--charcoal-muted);
+  --grey2: var(--charcoal-faint);
+  --line: var(--border);
+  --line-soft: var(--border-subtle);
+  --accent: var(--orange);
+
+  --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   --disp: "Space Grotesk", sans-serif;
-  /* dithered checkerboard patterns (ordered-dither texture, 2px cells) */
-  --checker-green: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Crect width='4' height='4' fill='%23a7c080'/%3E%3Crect width='2' height='2' fill='%232d353b'/%3E%3Crect x='2' y='2' width='2' height='2' fill='%232d353b'/%3E%3C/svg%3E");
-  --checker-fg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Crect width='2' height='2' fill='%23d3c6aa'/%3E%3Crect x='2' y='2' width='2' height='2' fill='%23d3c6aa'/%3E%3C/svg%3E");
-  --checker-yellow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Crect width='2' height='2' fill='%23dbbc7f'/%3E%3Crect x='2' y='2' width='2' height='2' fill='%23dbbc7f'/%3E%3C/svg%3E");
+
+  /* Motion Curves (Emil Kowalski) */
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
 }
 
 html,
@@ -31,120 +57,105 @@ body {
 }
 
 body {
-  color: var(--fg);
-  background: var(--bg0);
-  font-family: var(--mono);
-  font-size: 15px;
+  color: var(--charcoal);
+  background: var(--canvas);
+  font-family: var(--sans);
+  font-size: 14px;
   overflow-x: hidden;
   overflow-y: auto;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 ::selection {
-  background: var(--aqua);
-  color: var(--bg0);
+  background: var(--orange);
+  color: #FFFFFF;
 }
 
 ::-webkit-scrollbar {
-  width: 10px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--bg-deep);
+  background: var(--canvas);
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--bg3);
-  border: 2px solid var(--bg-deep);
+  background: var(--border);
+  border-radius: 9999px;
+  border: 2px solid var(--canvas);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--charcoal-muted);
 }
 
-/* Global film of ordered dither over the ops console — ties it to the landing page */
+/* Subtle Architectural Grid Texture (Eliminates pure starkness) */
 .ops-grain {
   position: fixed;
   inset: 0;
   z-index: 800;
   pointer-events: none;
-  background-image: var(--checker-fg);
-  background-size: 4px 4px;
-  opacity: 0.045;
+  background-image: radial-gradient(rgba(17, 17, 17, 0.04) 1px, transparent 1px);
+  background-size: 16px 16px;
+  opacity: 0.8;
 }
 
-/* Dithered text fill (landing hero treatment) */
-.dither-green-text {
-  background-image: var(--checker-green);
-  background-size: 4px 4px;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-/* Dithered status strip pattern */
-.dither-strip-green {
-  background-image: var(--checker-green);
-  background-size: 6px 6px;
-  opacity: 0.35;
-}
-.dither-strip-fg {
-  background-image: var(--checker-fg);
-  background-size: 6px 6px;
-  opacity: 0.2;
-}
-
-/* Leaflet radar styling — Everforest */
+/* Leaflet Radar Styling: Technical Minimalist */
 .leaflet-container {
-  background-color: var(--bg-deep) !important;
+  background-color: var(--canvas) !important;
   font-family: var(--mono);
 }
 
-/* Esri Dark Gray Canvas styling — tinted toward Everforest */
 .leaflet-tile {
-  filter: sepia(0.28) hue-rotate(65deg) saturate(0.55) brightness(0.74) contrast(1.18);
+  filter: grayscale(0.9) brightness(1.05) contrast(1.1);
 }
 
 .leaflet-control-zoom {
-  border: 1px dashed var(--line) !important;
-  background: rgba(30, 37, 40, 0.92) !important;
-  backdrop-filter: blur(10px) !important;
-  border-radius: 4px !important;
+  border: 1px solid var(--border) !important;
+  background: var(--canvas) !important;
+  border-radius: 9999px !important;
   overflow: hidden;
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5) !important;
+  box-shadow: 0 4px 12px rgba(17, 17, 17, 0.08) !important;
 }
 
 .leaflet-control-zoom a {
-  background: transparent !important;
-  color: var(--grey2) !important;
-  border-bottom: 1px dashed var(--line-soft) !important;
-  transition: color 0.15s ease, background-color 0.15s ease;
+  background: var(--canvas) !important;
+  color: var(--charcoal) !important;
+  border-bottom: 1px solid var(--border) !important;
+  transition: background-color 140ms var(--ease-out);
 }
 
 .leaflet-control-zoom a:hover {
-  background: rgba(211, 198, 170, 0.08) !important;
-  color: var(--fg) !important;
+  background: var(--panel) !important;
+  color: var(--orange) !important;
 }
 
 .leaflet-popup-content-wrapper {
-  background: rgba(30, 37, 40, 0.95) !important;
-  color: var(--fg) !important;
-  border: 1px dashed var(--line) !important;
-  border-radius: 4px !important;
-  backdrop-filter: blur(10px) !important;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7) !important;
+  background: var(--canvas) !important;
+  color: var(--charcoal) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 10px 25px -5px rgba(17, 17, 17, 0.12) !important;
   padding: 0 !important;
 }
 
 .leaflet-popup-content {
   margin: 10px 14px !important;
+  font-family: var(--mono);
 }
 
 .leaflet-popup-tip {
-  background: rgba(30, 37, 40, 0.95) !important;
-  border: 1px dashed var(--line) !important;
+  background: var(--canvas) !important;
+  border: 1px solid var(--border) !important;
 }
 
 .leaflet-tooltip {
-  background: rgba(30, 37, 40, 0.9) !important;
-  border: 1px dashed var(--line) !important;
-  color: var(--fg) !important;
-  border-radius: 3px !important;
+  background: var(--panel) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--charcoal) !important;
+  border-radius: 6px !important;
   box-shadow: none !important;
   font-family: var(--mono);
+  font-size: 11px;
 }
 .leaflet-tooltip-top:before,
 .leaflet-tooltip-bottom:before,
@@ -153,7 +164,7 @@ body {
   border: none;
 }
 
-/* Custom scrollbars */
+/* Custom Scrollbars */
 .custom-scrollbar::-webkit-scrollbar {
   width: 5px;
   height: 5px;
@@ -162,28 +173,81 @@ body {
   background: transparent;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: var(--bg3);
+  background: var(--border);
   border-radius: 9999px;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: var(--bg4);
+  background: var(--charcoal-muted);
 }
 
-/* Emil Kowalski animation utilities */
+/* Emil Kowalski Animation & Tactile Utilities */
+.btn-pill {
+  border-radius: 9999px;
+  transition: transform 160ms var(--ease-out), background-color 160ms var(--ease-out),
+    color 160ms var(--ease-out), border-color 160ms var(--ease-out);
+}
+.btn-pill:active {
+  transform: scale(0.97);
+}
+
 .btn-tactile {
-  transition: transform 140ms var(--ease-out), background-color 140ms var(--ease-out),
-    color 140ms var(--ease-out), border-color 140ms var(--ease-out);
+  transition: transform 160ms var(--ease-out), background-color 160ms var(--ease-out),
+    color 160ms var(--ease-out), border-color 160ms var(--ease-out);
 }
 .btn-tactile:active {
   transform: scale(0.97);
 }
 
 .card-tactile {
-  transition: transform 120ms var(--ease-out), background-color 160ms var(--ease-out),
-    border-color 160ms var(--ease-out);
+  transition: transform 140ms var(--ease-out), background-color 140ms var(--ease-out),
+    border-color 140ms var(--ease-out);
 }
 .card-tactile:active {
   transform: scale(0.985);
+}
+
+/* Circular icon housings */
+.icon-circle {
+  width: 32px;
+  height: 32px;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  background: var(--canvas);
+  color: var(--charcoal);
+  flex-shrink: 0;
+}
+
+/* Architectural Checkbox with Industrial Safety Orange Fill */
+.checkbox-orange {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--canvas);
+  cursor: pointer;
+  display: inline-grid;
+  place-content: center;
+  transition: transform 120ms var(--ease-out), background-color 120ms var(--ease-out),
+    border-color 120ms var(--ease-out);
+}
+.checkbox-orange:active {
+  transform: scale(0.90);
+}
+.checkbox-orange:checked {
+  background-color: var(--orange);
+  border-color: var(--orange);
+}
+.checkbox-orange:checked::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+  transform: scale(1);
+  background-color: #FFFFFF;
 }
 
 .anim-progress {
@@ -220,24 +284,145 @@ body {
   animation: logCrossFade 220ms var(--ease-out) forwards;
 }
 
-/* Everforest status blink (stepped, no easing — matches landing .dot) */
-@keyframes everBlink {
+/* Status Blink (Stepped) */
+@keyframes statusBlink {
   50% {
     opacity: 0.25;
   }
 }
 .blink-step {
-  animation: everBlink 1.8s steps(2) infinite;
+  animation: statusBlink 1.8s steps(2) infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .btn-pill,
   .btn-tactile,
   .card-tactile,
   .anim-progress,
   .animate-slide-up-fade,
   .animate-log-fade,
-  .blink-step {
+  .animate-receipt-pop,
+  .animate-stream-line,
+  .animate-counter-bump,
+  .animate-pane-fade,
+  .accordion-grid,
+  .blink-step,
+  .scroll-entry {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Emil Kowalski Animation Utilities */
+@keyframes receiptPop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+    filter: blur(1.5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0px);
+  }
+}
+
+.animate-receipt-pop {
+  animation: receiptPop 280ms var(--ease-out) forwards;
+}
+
+@keyframes streamLine {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-stream-line {
+  animation: streamLine 160ms var(--ease-out) forwards;
+}
+
+@keyframes counterBump {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.animate-counter-bump {
+  animation: counterBump 240ms var(--ease-out);
+}
+
+@keyframes paneFade {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.99);
+    filter: blur(1px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0px);
+  }
+}
+
+.animate-pane-fade {
+  animation: paneFade 220ms var(--ease-out) forwards;
+}
+
+.accordion-grid {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 220ms var(--ease-out);
+}
+
+.accordion-grid.open {
+  grid-template-rows: 1fr;
+}
+
+.accordion-inner {
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 180ms ease 40ms;
+}
+
+.accordion-grid.open .accordion-inner {
+  opacity: 1;
+}
+
+/* Minimalist Editorial Directives */
+.font-editorial {
+  font-family: 'Newsreader', 'Instrument Serif', Georgia, serif;
+}
+
+.scroll-entry {
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 600ms cubic-bezier(0.16, 1, 0.3, 1), transform 600ms cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+}
+
+.scroll-entry.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.card-minimalist {
+  border: 1px solid #EAEAEA;
+  background-color: #FFFFFF;
+  transition: box-shadow 200ms ease, transform 200ms ease;
+}
+
+.card-minimalist:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+

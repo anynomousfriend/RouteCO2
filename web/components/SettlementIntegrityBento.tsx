@@ -34,23 +34,23 @@ export function SettlementIntegrityBento({
 
   return (
     <div
-      className={`w-full bg-[#1e2528] text-[#d3c6aa] p-4 border border-dashed border-[#d3c6aa]/16 flex flex-col justify-between select-none font-mono ${className}`}
+      className={`w-full bg-[#D6D5CF] text-[#111111] p-4 rounded-xl border border-[#D4D3CD] flex flex-col justify-between select-none font-sans ${className}`}
     >
       {/* Header */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-[#9daaa4]">
-            <ShieldCheck className="w-3.5 h-3.5 text-[#a7c080]" />
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-[#111111]">
+            <ShieldCheck className="w-3.5 h-3.5 text-[#FF4D00]" />
             <span className="uppercase tracking-wider">Settlement Integrity Status</span>
           </div>
           <div className="flex items-center gap-1 text-[10px] font-mono">
-            <span className="w-1.5 h-1.5 bg-[#a7c080] blink-step" />
-            <span className="text-[#a7c080] font-bold">Arc L1 5042002</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-[#FF4D00] animate-pulse" />
+            <span className="text-[#111111] font-bold">Arc L1 5042002</span>
           </div>
         </div>
 
         {/* Stepped Area / Candlestick Chart */}
-        <div className="relative h-20 w-full flex items-end justify-between gap-2 pt-2 pb-1 border-b border-dashed border-[#d3c6aa]/16">
+        <div className="relative h-20 w-full flex items-end justify-between gap-2 pt-2 pb-1 border-b border-[#D4D3CD]">
           {steps.map((step, idx) => {
             const isGreen = step.status === "green";
             return (
@@ -58,14 +58,14 @@ export function SettlementIntegrityBento({
                 <div className="w-full flex items-end justify-center h-full">
                   <div
                     style={{ height: `${step.val}%` }}
-                    className={`w-full max-w-[20px] transition-[height,background-color] duration-300 ${
+                    className={`w-full max-w-[20px] rounded-t-sm transition-[height,background-color] duration-300 ${
                       isGreen
-                        ? "bg-[#a7c080]/80 group-hover:bg-[#a7c080]"
-                        : "bg-[#dbbc7f]/80 group-hover:bg-[#dbbc7f]"
+                        ? "bg-[#111111] group-hover:bg-[#FF4D00]"
+                        : "bg-[#FF4D00]"
                     }`}
                   />
                 </div>
-                <span className="text-[9px] font-mono text-[#859289]">{step.time}</span>
+                <span className="text-[9px] font-mono text-[#555555]">{step.time}</span>
               </div>
             );
           })}
@@ -74,11 +74,11 @@ export function SettlementIntegrityBento({
 
       {/* Narrative Status Footer */}
       <div className="mt-3 flex items-start gap-2.5 text-[11px] leading-snug">
-        <div className="w-6 h-6 bg-[#a7c080]/10 border border-dashed border-[#a7c080]/30 flex items-center justify-center shrink-0 mt-0.5">
-          <CheckCircle2 className="w-3.5 h-3.5 text-[#a7c080]" />
+        <div className="icon-circle w-6 h-6 text-[#FF4D00] shrink-0 mt-0.5">
+          <CheckCircle2 className="w-3.5 h-3.5" />
         </div>
         <div className="flex-1 space-y-1">
-          <p className="text-[10.5px] text-[#9daaa4] leading-relaxed">
+          <p className="text-[10.5px] text-[#555555] leading-relaxed font-sans">
             {isSettled ? (
               <>
                 Wheels-Down transponder signal verified on Runway {runway} ({destinationAirport}). 1inch Aqua zero-custody draw confirmed on Arc Testnet {blockNumber ? `Block #${blockNumber}` : "Receipt"} with zero escrow lockup.
@@ -98,7 +98,7 @@ export function SettlementIntegrityBento({
               href={`https://testnet.arcscan.app/tx/${settlementTxHash}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-[10px] font-mono text-[#7fbbb3] hover:underline pt-0.5"
+              className="btn-pill inline-flex items-center gap-1 text-[10px] font-mono px-2.5 py-0.5 bg-[#ECEBE6] text-[#111111] hover:text-[#FF4D00] border border-[#D4D3CD] transition-colors mt-0.5"
             >
               <span>Verify {blockNumber ? `Block #${blockNumber}` : "Receipt"} on ArcScan</span>
               <ExternalLink className="w-3 h-3" />

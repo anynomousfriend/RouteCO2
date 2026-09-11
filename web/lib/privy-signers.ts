@@ -2,7 +2,7 @@
 
 /**
  * Privy scoped session delegation (Track 3).
- * Ground truth: docs.privy.io — signers let the app transact on a user's embedded
+ * Ground truth: docs.privy.io: signers let the app transact on a user's embedded
  * wallet offline within a policy (contract whitelist + spend cap + expiry):
  * 1. Dashboard: Authorization keys -> key quorum ID; Policies -> policy ID.
  * 2. Client (after login + embedded wallet): useSigners().addSigners({ address,

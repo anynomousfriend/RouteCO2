@@ -109,7 +109,7 @@ export function DescentTimelineBar({
 
   return (
     <div
-      className={`h-14 bg-[#1e2528]/90 backdrop-blur-md border border-dashed border-[#d3c6aa]/20 text-[#d3c6aa] px-4 flex items-center justify-between gap-4 select-none z-20 transition-colors ${className}`}
+      className={`h-14 bg-[#D6D5CF]/95 backdrop-blur-md rounded-xl border border-[#D4D3CD] text-[#111111] px-4 flex items-center justify-between gap-4 select-none z-20 transition-colors shadow-xs ${className}`}
     >
       {/* ── LEFT: MODE IDENTITY & PLAYBACK CONTROLS ── */}
       {mode === "replay" ? (
@@ -118,7 +118,7 @@ export function DescentTimelineBar({
             type="button"
             onClick={onTogglePlay}
             title={isPlaying ? "Pause Track Replay" : "Play Track Replay"}
-            className="w-8 h-8 bg-[#a7c080] text-[#2d353b] hover:bg-[#dbbc7f] flex items-center justify-center active:scale-[0.92] transition-[transform,colors] duration-140 cursor-pointer"
+            className="w-8 h-8 rounded-full bg-[#111111] text-[#ECEBE6] hover:bg-[#FF4D00] flex items-center justify-center active:scale-[0.97] transition-[transform,colors] duration-140 cursor-pointer shadow-xs"
           >
             {isPlaying ? (
               <Pause className="w-3.5 h-3.5 fill-current" />
@@ -130,7 +130,7 @@ export function DescentTimelineBar({
             type="button"
             onClick={onStepNext}
             title="Step Next Telemetry Frame"
-            className="w-8 h-8 bg-[#d3c6aa]/10 hover:bg-[#d3c6aa]/20 text-[#d3c6aa] flex items-center justify-center active:scale-[0.92] transition-[transform,colors] duration-140 cursor-pointer"
+            className="w-8 h-8 rounded-full bg-[#ECEBE6] hover:bg-[#ECEBE6]/80 text-[#111111] border border-[#D4D3CD] flex items-center justify-center active:scale-[0.97] transition-[transform,colors] duration-140 cursor-pointer"
           >
             <SkipForward className="w-3.5 h-3.5" />
           </button>
@@ -138,40 +138,40 @@ export function DescentTimelineBar({
             type="button"
             onClick={onJumpToTouchdown}
             title="Jump Directly to Wheels-Down"
-            className={`px-2.5 py-1.5 text-[11px] font-mono font-medium flex items-center gap-1 active:scale-[0.96] transition-[transform,colors] duration-140 cursor-pointer border ${
+            className={`btn-pill px-3 py-1.5 text-[11px] font-mono font-medium flex items-center gap-1.5 active:scale-[0.97] transition-[transform,colors] duration-140 cursor-pointer border ${
               isSettled
-                ? "bg-[#a7c080]/20 text-[#a7c080] border-dashed border-[#a7c080]/40"
-                : "bg-[#d3c6aa]/10 hover:bg-[#d3c6aa]/20 text-[#9daaa4] border-dashed border-[#d3c6aa]/16"
+                ? "bg-[#ECEBE6] text-[#111111] border-[#D4D3CD]"
+                : "bg-[#ECEBE6] hover:bg-[#ECEBE6]/80 text-[#555555] border-[#D4D3CD]"
             }`}
           >
-            <CheckCircle2 className="w-3.5 h-3.5 text-[#a7c080]" />
+            <CheckCircle2 className="w-3.5 h-3.5 text-[#FF4D00]" />
             <span>Touchdown</span>
           </button>
           {/* Playback speed (demo-friendly fast-forward of recorded fixes) */}
           {onSpeedChange && (
             <div
-              className="flex items-center border border-dashed border-[#d3c6aa]/16"
-              title="Replay speed — recorded fixes play back faster for demos"
+              className="flex items-center rounded-full overflow-hidden border border-[#D4D3CD] bg-[#ECEBE6]"
+              title="Replay speed: recorded fixes play back faster for demos"
             >
               {[1, 2, 4, 8].map((s) => (
                 <button
                   key={s}
                   type="button"
                   onClick={() => onSpeedChange(s)}
-                  className={`px-2 py-1.5 text-[10px] font-mono font-bold cursor-pointer transition-colors ${
+                  className={`px-2 py-0.5 text-[9.5px] font-mono font-bold transition-colors cursor-pointer ${
                     playbackSpeed === s
-                      ? "bg-[#a7c080] text-[#2d353b]"
-                      : "text-[#859289] hover:text-[#d3c6aa]"
+                      ? "bg-[#111111] text-[#ECEBE6]"
+                      : "text-[#555555] hover:text-[#111111]"
                   }`}
                 >
-                  {s}×
+                  {s}x
                 </button>
               ))}
             </div>
           )}
           {trackSource && trackSource !== "synthetic" && (
             <span
-              title={trackLabel ? `Replaying ${trackLabel} — real recorded ADS-B fixes` : "Replaying real recorded ADS-B fixes"}
+              title={trackLabel ? `Replaying ${trackLabel}: real recorded ADS-B fixes` : "Replaying real recorded ADS-B fixes"}
               className="px-2 py-1.5 text-[9px] font-mono font-bold bg-[#7fbbb3]/15 text-[#7fbbb3] border border-dashed border-[#7fbbb3]/40"
             >
               RECORDED
@@ -179,7 +179,7 @@ export function DescentTimelineBar({
           )}
           {trackSource === "synthetic" && (
             <span
-              title="Physics fixture for development — not real telemetry"
+              title="Physics fixture for development: not real telemetry"
               className="px-2 py-1.5 text-[9px] font-mono font-bold bg-[#dbbc7f]/15 text-[#dbbc7f] border border-dashed border-[#dbbc7f]/40"
             >
               SYNTHETIC
@@ -187,20 +187,22 @@ export function DescentTimelineBar({
           )}
         </div>
       ) : (
+        /* Live Mode Header Indicator */
         <div className="flex items-center gap-3 shrink-0">
-          <div className="relative flex items-center justify-center">
-            <span className="w-2.5 h-2.5 bg-[#a7c080] blink-step" />
+          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-[#ECEBE6] border border-[#D4D3CD] rounded-full">
+            <Radio className="w-3.5 h-3.5 text-[#FF4D00] blink-step" />
+            <span className="font-mono text-xs font-bold text-[#111111]">
+              {liveCallsign || "LIVE RADAR"}
+            </span>
           </div>
-          <div className="flex flex-col">
-            <div className="flex items-center gap-2">
-              <span className="font-mono font-semibold text-sm tracking-wide text-[#d3c6aa]">
-                {liveCallsign || "ACQUIRING..."}
-              </span>
-              <span className="px-1.5 py-0.5 text-[9px] font-mono font-semibold bg-[#a7c080]/20 text-[#a7c080] border border-dashed border-[#a7c080]/40">
+          <div className="hidden sm:flex flex-col">
+            <div className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 bg-[#FF4D00] blink-step rounded-full" />
+              <span className="text-[10px] font-mono uppercase text-[#111111] font-semibold">
                 LIVE ADS-B
               </span>
             </div>
-            <span className="text-[10px] text-[#859289] truncate max-w-[130px] font-mono">
+            <span className="text-[10px] text-[#555555] truncate max-w-[130px] font-mono">
               {liveOriginCountry || "OpenSky Network"} · {liveEquipmentType || "A320"}
             </span>
           </div>
@@ -212,29 +214,29 @@ export function DescentTimelineBar({
         /* Replay Mode: Calibrated Glidepath Descent Ruler */
         <div className="flex-1 max-w-xl flex flex-col justify-center px-2">
           {/* Scale Numbers Header */}
-          <div className="flex justify-between text-[9.5px] font-mono text-[#859289] mb-1 px-1">
+          <div className="flex justify-between text-[9.5px] font-mono text-[#555555] mb-1 px-1">
             <span>FL360</span>
             <span>FL240</span>
             <span>FL100</span>
             <span>3,000 FT</span>
-            <span className="text-[#a7c080] font-bold">0 FT (TOUCHDOWN)</span>
+            <span className="text-[#FF4D00] font-bold">0 FT (TOUCHDOWN)</span>
           </div>
 
           {/* Calibrated Track with Ticks and Scrubber */}
-          <div className="relative h-2 bg-[#d3c6aa]/10 overflow-visible flex items-center">
+          <div className="relative h-2 bg-[#D4D3CD] rounded-full overflow-visible flex items-center">
             {/* Tick marks */}
             <div className="absolute inset-0 flex justify-between px-1 pointer-events-none">
-              <span className="w-[1px] h-2 bg-[#d3c6aa]/20" />
-              <span className="w-[1px] h-2 bg-[#d3c6aa]/20" />
-              <span className="w-[1px] h-2 bg-[#d3c6aa]/20" />
-              <span className="w-[1px] h-2 bg-[#d3c6aa]/20" />
-              <span className="w-[1px] h-2 bg-[#a7c080]" />
+              <span className="w-[1px] h-2 bg-[#111111]/20" />
+              <span className="w-[1px] h-2 bg-[#111111]/20" />
+              <span className="w-[1px] h-2 bg-[#111111]/20" />
+              <span className="w-[1px] h-2 bg-[#111111]/20" />
+              <span className="w-[1px] h-2 bg-[#FF4D00]" />
             </div>
 
             {/* Active Fill Line */}
             <div
               style={{ width: `${progressPercent}%` }}
-              className="h-full bg-gradient-to-r from-[#7fbbb3] via-[#83c092] to-[#a7c080] transition-[width] duration-100 ease-out"
+              className="h-full bg-[#FF4D00] rounded-full transition-[width] duration-100 ease-out"
             />
 
             {/* Interactive Scrub Range Input */}
@@ -251,9 +253,9 @@ export function DescentTimelineBar({
             {/* Scrub Indicator Pin with Live Altitude Tooltip */}
             <div
               style={{ left: `calc(${progressPercent}% - 7px)` }}
-              className="absolute w-3.5 h-3.5 bg-[#d3c6aa] border-2 border-[#a7c080] pointer-events-none transition-[left] duration-100 ease-out flex items-center justify-center"
+              className="absolute w-3.5 h-3.5 rounded-full bg-[#111111] border-2 border-[#ECEBE6] pointer-events-none transition-[left] duration-100 ease-out flex items-center justify-center shadow-md"
             >
-              <div className="absolute -top-7 px-1.5 py-0.5 bg-[#1e2528] border border-dashed border-[#d3c6aa]/20 text-[9px] font-mono text-[#a7c080] whitespace-nowrap shadow-lg">
+              <div className="absolute -top-7 px-1.5 py-0.5 bg-[#ECEBE6] border border-[#D4D3CD] rounded-md text-[9px] font-mono text-[#111111] whitespace-nowrap shadow-lg">
                 {currentAltFt.toLocaleString()} ft
               </div>
             </div>
@@ -264,61 +266,53 @@ export function DescentTimelineBar({
         <div className="flex-1 max-w-xl flex items-center justify-center gap-6 px-2 text-xs font-mono">
           {/* Metric 1: Barometric Altitude */}
           <div className="flex items-center gap-2">
-            <span className="text-[10px] text-[#859289] uppercase">ALT</span>
+            <span className="text-[10px] text-[#555555] uppercase">ALT</span>
             <div className="flex items-baseline gap-1">
-              <span className="font-semibold text-[#d3c6aa] tabular-nums">
+              <span className="font-semibold text-[#111111] tabular-nums">
                 {currentAltFt.toLocaleString()}
               </span>
-              <span className="text-[10px] text-[#a7c080] font-semibold">
+              <span className="text-[10px] text-[#111111] font-semibold">
                 FL{currentFlightLevel}
               </span>
             </div>
           </div>
 
-          <div className="w-[1px] h-4 bg-[#d3c6aa]/10" />
+          <div className="w-[1px] h-4 bg-[#D4D3CD]" />
 
           {/* Metric 2: Ground Speed */}
           <div className="flex items-center gap-2">
-            <span className="text-[10px] text-[#859289] uppercase">GS</span>
-            <span className="font-semibold text-[#d3c6aa] tabular-nums">
-              {speedKts} <span className="text-[10px] text-[#859289] font-normal">KTS</span>
+            <span className="text-[10px] text-[#555555] uppercase">GS</span>
+            <span className="font-semibold text-[#111111] tabular-nums">
+              {speedKts} <span className="text-[10px] text-[#555555] font-normal">KTS</span>
             </span>
           </div>
 
-          <div className="w-[1px] h-4 bg-[#d3c6aa]/10" />
+          <div className="w-[1px] h-4 bg-[#D4D3CD]" />
 
           {/* Metric 3: Vertical Climb / Descent Rate */}
           <div className="flex items-center gap-1.5">
-            <span className="text-[10px] text-[#859289] uppercase">VSI</span>
+            <span className="text-[10px] text-[#555555] uppercase">VSI</span>
             <div className="flex items-center gap-1">
               {vrateFpm > 100 ? (
-                <ArrowUpRight className="w-3 h-3 text-[#a7c080]" />
+                <ArrowUpRight className="w-3 h-3 text-[#FF4D00]" />
               ) : vrateFpm < -100 ? (
-                <ArrowDownRight className="w-3 h-3 text-[#dbbc7f]" />
+                <ArrowDownRight className="w-3 h-3 text-[#111111]" />
               ) : (
-                <Minus className="w-3 h-3 text-[#859289]" />
+                <Minus className="w-3 h-3 text-[#555555]" />
               )}
-              <span
-                className={`font-semibold tabular-nums ${
-                  vrateFpm > 100
-                    ? "text-[#a7c080]"
-                    : vrateFpm < -100
-                    ? "text-[#dbbc7f]"
-                    : "text-[#9daaa4]"
-                }`}
-              >
+              <span className="font-semibold tabular-nums text-[#111111]">
                 {vrateFpm > 0 ? `+${vrateFpm}` : vrateFpm}
               </span>
-              <span className="text-[9px] text-[#859289]">FPM</span>
+              <span className="text-[9px] text-[#555555]">FPM</span>
             </div>
           </div>
 
-          <div className="w-[1px] h-4 bg-[#d3c6aa]/10 hidden md:block" />
+          <div className="w-[1px] h-4 bg-[#D4D3CD] hidden md:block" />
 
           {/* Metric 4: Transponder Hex */}
           <div className="hidden md:flex items-center gap-1.5">
-            <span className="text-[10px] text-[#859289] uppercase">XPNDR</span>
-            <span className="px-1.5 py-0.5 bg-[#d3c6aa]/10 font-semibold text-[10.5px] text-[#7fbbb3]">
+            <span className="text-[10px] text-[#555555] uppercase">XPNDR</span>
+            <span className="px-2 py-0.5 bg-[#ECEBE6] border border-[#D4D3CD] rounded-md font-semibold text-[10.5px] text-[#111111]">
               0x{(liveIcao24 || "39DE4B").toUpperCase().replace("0X", "")}
             </span>
           </div>
@@ -332,19 +326,19 @@ export function DescentTimelineBar({
           onClick={handleTriggerClick}
           disabled={isSettling}
           title="Broadcasts a real Arc Testnet transaction spending testnet USDC"
-          className={`flex items-center gap-2 px-3.5 py-1.5 text-xs font-mono font-semibold active:scale-[0.96] transition-[transform,colors] duration-140 cursor-pointer border ${
+          className={`btn-pill flex items-center gap-2 px-4 py-2 text-xs font-mono font-semibold cursor-pointer border shadow-sm ${
             isSettled
-              ? "bg-[#a7c080] text-[#2d353b] font-bold hover:bg-[#dbbc7f] border-[#a7c080]"
+              ? "bg-[#D6D5CF] text-[#111111] font-bold border-[#D4D3CD]"
               : isSettling
-              ? "bg-[#dbbc7f]/20 text-[#dbbc7f] border-dashed border-[#dbbc7f]/50 opacity-80 animate-pulse cursor-wait"
+              ? "bg-[#ECEBE6] text-[#555555] border-[#D4D3CD] opacity-80 animate-pulse cursor-wait"
               : confirmArmed
-              ? "bg-[#dbbc7f] text-[#2d353b] border-[#dbbc7f]"
-              : "bg-[#d3c6aa] text-[#2d353b] hover:bg-[#dbbc7f] border-[#d3c6aa]"
+              ? "bg-[#FF4D00] text-white border-[#FF4D00]"
+              : "bg-[#111111] text-[#ECEBE6] hover:bg-[#FF4D00] border-[#111111]"
           }`}
         >
           {isSettled ? (
             <>
-              <CheckCircle2 className="w-3.5 h-3.5 text-[#2d353b]" />
+              <CheckCircle2 className="w-3.5 h-3.5 text-[#FF4D00]" />
               <span>Settled on Arc</span>
               {settlementTxHash && (
                 <a
@@ -352,7 +346,7 @@ export function DescentTimelineBar({
                   target="_blank"
                   rel="noreferrer"
                   onClick={(e) => e.stopPropagation()}
-                  className="text-[#2d353b]/70 hover:text-[#2d353b] ml-0.5 p-0.5 hover:bg-[#2d353b]/10 transition-colors"
+                  className="text-[#111111] hover:text-[#FF4D00] ml-0.5 p-0.5 hover:bg-[#ECEBE6] rounded-full transition-colors"
                   title="Open Transaction on ArcScan Explorer"
                 >
                   <ExternalLink className="w-3 h-3" />
@@ -371,19 +365,19 @@ export function DescentTimelineBar({
         </button>
 
         {/* Informative Hover Popover Explaining What This Button Does */}
-        <div className="absolute right-0 top-full mt-2 hidden group-hover:flex flex-col w-72 p-3 bg-[#1e2528] border border-dashed border-[#d3c6aa]/20 text-[#d3c6aa] shadow-2xl z-50 pointer-events-none text-left animate-in fade-in zoom-in-95 duration-140">
-          <div className="flex items-center justify-between text-[10px] font-mono text-[#a7c080] font-bold mb-1">
+        <div className="absolute right-0 top-full mt-2 hidden group-hover:flex flex-col w-72 p-3.5 bg-[#ECEBE6] border border-[#D4D3CD] rounded-xl text-[#111111] shadow-2xl z-50 pointer-events-none text-left animate-in fade-in zoom-in-95 duration-140">
+          <div className="flex items-center justify-between text-[10px] font-mono text-[#111111] font-bold mb-1">
             <span>ARC SETTLEMENT TRIGGER</span>
-            <span className="text-[9px] px-1.5 py-0.5 bg-[#a7c080]/20 text-[#a7c080]">1INCH AQUA</span>
+            <span className="text-[9px] px-2 py-0.5 bg-[#FF4D00] text-white rounded-full font-bold">1INCH AQUA</span>
           </div>
-          <p className="text-[11px] text-[#9daaa4] leading-snug">
+          <p className="text-[11px] text-[#555555] leading-snug font-sans">
             {mode === "live"
               ? `Executes on-chain retirement of ${((usdcCost / 25) * 1000).toFixed(0)} kg CO₂ for this flight segment using native USDC via SkyRouteVault on Arc Testnet.`
               : "Executes atomic zero-custody wheels-down carbon offset retirement upon touchdown using native Arc USDC."}
           </p>
-          <div className="mt-2 pt-2 border-t border-dashed border-[#d3c6aa]/16 flex items-center justify-between text-[9.5px] font-mono text-[#859289]">
+          <div className="mt-2 pt-2 border-t border-[#D4D3CD] flex items-center justify-between text-[9.5px] font-mono text-[#555555]">
             <span>CHAIN ID: 5042002</span>
-            <span className="text-[#a7c080]">ZERO-ESCROW PULL</span>
+            <span className="text-[#FF4D00] font-semibold">ZERO-ESCROW PULL</span>
           </div>
         </div>
       </div>

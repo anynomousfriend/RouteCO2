@@ -93,25 +93,25 @@ export function ByokPanel({ isOpen, onClose, activeAddress, onActivate, onForget
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="byok-modal-title"
-        className="relative w-full max-w-lg bg-[#272e33] shadow-2xl border border-dashed border-[#d3c6aa]/20 overflow-hidden flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-200"
+        className="relative w-full max-w-lg bg-[#ECEBE6] text-[#111111] rounded-xl shadow-2xl border border-[#D4D3CD] overflow-hidden flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-200 font-sans"
       >
         {/* Header */}
-        <div className="px-6 py-4 border-b border-dashed border-[#d3c6aa]/16 flex items-center justify-between bg-[#1e2528]/60">
+        <div className="px-6 py-4 border-b border-[#D4D3CD] flex items-center justify-between bg-[#D6D5CF]/60">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 bg-[#7fbbb3] flex items-center justify-center text-[#1e2528]">
-              <FlaskConical className="w-4 h-4" />
+            <div className="w-8 h-8 rounded-lg bg-[#111111] flex items-center justify-center text-[#ECEBE6]">
+              <FlaskConical className="w-4 h-4 text-[#FF4D00]" />
             </div>
             <div>
-              <h2 id="byok-modal-title" className="text-sm font-bold text-[#d3c6aa] font-mono">
+              <h2 id="byok-modal-title" className="text-sm font-bold text-[#111111] font-sans">
                 TEST IT YOURSELF (BYOK)
               </h2>
-              <p className="text-[11px] text-[#859289] font-mono">
-                Settle with your own Arc Testnet key — no signup, no server custody
+              <p className="text-[11px] text-[#555555] font-sans">
+                Settle with your own Arc Testnet key: no signup, no server custody
               </p>
             </div>
           </div>
@@ -119,19 +119,19 @@ export function ByokPanel({ isOpen, onClose, activeAddress, onActivate, onForget
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="p-1.5 text-[#859289] hover:text-[#d3c6aa] hover:bg-[#d3c6aa]/10 cursor-pointer active:scale-[0.92] transition-colors duration-140"
+            className="icon-circle w-8 h-8 text-[#555555] hover:text-[#111111] hover:bg-[#ECEBE6] cursor-pointer transition-colors duration-140"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Body */}
-        <div className="p-6 overflow-y-auto space-y-4 text-xs text-[#9daaa4] font-mono">
+        <div className="p-6 overflow-y-auto space-y-4 text-xs text-[#111111] font-sans">
           {/* Testnet-only warning */}
-          <div className="p-3 bg-[#dbbc7f]/[0.08] border border-dashed border-[#dbbc7f]/40 text-[#dbbc7f] flex items-start gap-2.5">
-            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-            <div className="text-[11px] leading-relaxed">
-              <strong className="block">TESTNET ONLY — Arc Testnet (5042002).</strong>
+          <div className="p-3 rounded-lg bg-[#D6D5CF] border border-[#D4D3CD] text-[#111111] flex items-start gap-2.5">
+            <AlertTriangle className="w-4 h-4 text-[#FF4D00] shrink-0 mt-0.5" />
+            <div className="text-[11px] text-[#555555] leading-relaxed">
+              <strong className="block text-[#111111]">TESTNET ONLY: Arc Testnet (5042002).</strong>
               Never paste a key holding real funds. The key lives only in this tab's
               memory: it is never sent to any server, never logged, never stored.
               Closing the tab or clicking Forget destroys it.
@@ -139,35 +139,35 @@ export function ByokPanel({ isOpen, onClose, activeAddress, onActivate, onForget
           </div>
 
           {activeAddress ? (
-            <div className="p-3.5 bg-[#a7c080]/[0.08] border border-dashed border-[#a7c080]/40">
-              <div className="flex items-center gap-2 text-[#a7c080] font-semibold text-xs">
-                <ShieldCheck className="w-4 h-4" />
+            <div className="p-3.5 rounded-lg bg-[#D6D5CF] border border-[#D4D3CD]">
+              <div className="flex items-center gap-2 text-[#111111] font-semibold text-xs">
+                <ShieldCheck className="w-4 h-4 text-[#FF4D00]" />
                 <span>Test key active</span>
               </div>
               <div className="mt-2 flex items-center justify-between gap-2">
-                <span className="text-[11px] text-[#d3c6aa] tabular-nums break-all">
+                <span className="text-[11px] text-[#111111] font-mono tabular-nums break-all">
                   {activeAddress}
                 </span>
                 <button
                   type="button"
                   onClick={() => handleCopyAddress(activeAddress)}
-                  className="p-1.5 text-[#859289] hover:text-[#d3c6aa] cursor-pointer shrink-0"
+                  className="icon-circle p-1.5 text-[#555555] hover:text-[#111111] cursor-pointer shrink-0"
                   title="Copy address (fund it from the Circle faucet)"
                 >
-                  {copied ? <Check className="w-3.5 h-3.5 text-[#a7c080]" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copied ? <Check className="w-3.5 h-3.5 text-[#FF4D00]" /> : <Copy className="w-3.5 h-3.5" />}
                 </button>
               </div>
-              <p className="text-[10.5px] text-[#859289] mt-2 leading-relaxed">
+              <p className="text-[10.5px] text-[#555555] mt-2 leading-relaxed font-sans">
                 Fund this address with testnet USDC via{" "}
                 <a
                   href="https://faucet.circle.com"
                   target="_blank"
                   rel="noreferrer"
-                  className="text-[#7fbbb3] underline inline-flex items-center gap-0.5"
+                  className="text-[#111111] font-medium underline inline-flex items-center gap-0.5 hover:text-[#FF4D00]"
                 >
                   faucet.circle.com <ExternalLink className="w-3 h-3" />
-                </a>{" "}
-                — then every Settle button signs locally as both treasury and agent.
+                </a>{": "}
+                then every Settle button signs locally as both treasury and agent.
                 Your flights settle permissionlessly; nothing touches the demo treasury.
               </p>
               <button
@@ -178,17 +178,17 @@ export function ByokPanel({ isOpen, onClose, activeAddress, onActivate, onForget
                     description: "Key wiped from memory. Settlements revert to the demo treasury route.",
                   });
                 }}
-                className="mt-3 flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-[#e67e80]/10 text-[#e67e80] hover:bg-[#e67e80]/20 border border-dashed border-[#e67e80]/40 cursor-pointer active:scale-[0.96] transition-colors"
+                className="btn-pill mt-3 flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-[#ECEBE6] text-[#111111] hover:text-[#FF4D00] border border-[#D4D3CD] hover:border-[#FF4D00] cursor-pointer transition-colors"
               >
-                <Trash2 className="w-3.5 h-3.5" />
+                <Trash2 className="w-3.5 h-3.5 text-[#FF4D00]" />
                 <span>Forget Key</span>
               </button>
             </div>
           ) : (
             <>
               <div className="space-y-1.5">
-                <label className="text-[11px] font-semibold text-[#d3c6aa] uppercase tracking-wider flex items-center gap-1.5">
-                  <KeyRound className="w-3.5 h-3.5" />
+                <label className="text-[11px] font-semibold text-[#111111] uppercase tracking-wider flex items-center gap-1.5 font-sans">
+                  <KeyRound className="w-3.5 h-3.5 text-[#FF4D00]" />
                   Arc Testnet Private Key
                 </label>
                 <input
@@ -205,23 +205,23 @@ export function ByokPanel({ isOpen, onClose, activeAddress, onActivate, onForget
                     if (e.key === "Enter") void handlePreview();
                   }}
                   placeholder="0x… (64 hex characters)"
-                  className="w-full px-3 py-2.5 bg-[#1e2528] border border-dashed border-[#d3c6aa]/16 text-xs font-mono text-[#d3c6aa] placeholder-[#859289]/60 focus:outline-none focus:border-[#7fbbb3]/60 transition-colors tabular-nums"
+                  className="w-full px-3 py-2.5 bg-[#ECEBE6] rounded-lg border border-[#D4D3CD] text-xs font-mono text-[#111111] placeholder-[#555555]/60 focus:outline-none focus:border-[#FF4D00] transition-colors tabular-nums"
                 />
-                <p className="text-[10.5px] text-[#859289]">
-                  Paste to preview the address and balance first — activation is a separate step.
+                <p className="text-[10.5px] text-[#555555] font-sans">
+                  Paste to preview the address and balance first: activation is a separate step.
                 </p>
               </div>
 
               {previewAddress && (
-                <div className="p-3 bg-[#1e2528] border border-dashed border-[#d3c6aa]/16">
-                  <div className="text-[10px] text-[#859289] uppercase">Derived address</div>
-                  <div className="text-[11px] text-[#d3c6aa] tabular-nums break-all mt-0.5">
+                <div className="p-3 rounded-lg bg-[#D6D5CF] border border-[#D4D3CD]">
+                  <div className="text-[10px] text-[#555555] uppercase font-mono">Derived address</div>
+                  <div className="text-[11px] text-[#111111] font-mono tabular-nums break-all mt-0.5">
                     {previewAddress}
                   </div>
-                  <div className="text-[11px] text-[#859289] mt-1">
+                  <div className="text-[11px] text-[#555555] mt-1 font-sans">
                     USDC balance:{" "}
-                    <strong className="text-[#d3c6aa]">
-                      {isChecking ? "checking…" : balance === null ? "—" : `${balance}`}
+                    <strong className="text-[#111111] font-mono">
+                      {isChecking ? "checking…" : balance === null ? "--" : `${balance}`}
                     </strong>
                   </div>
                 </div>
@@ -231,7 +231,7 @@ export function ByokPanel({ isOpen, onClose, activeAddress, onActivate, onForget
                 <button
                   type="button"
                   onClick={handlePreview}
-                  className="flex-1 py-2.5 px-4 bg-[#1e2528] hover:bg-[#2d353b] text-xs text-[#9daaa4] hover:text-[#d3c6aa] border border-dashed border-[#d3c6aa]/16 cursor-pointer transition-colors font-mono font-semibold"
+                  className="btn-pill flex-1 py-2.5 px-4 bg-[#ECEBE6] hover:bg-[#D6D5CF] text-xs text-[#111111] border border-[#D4D3CD] cursor-pointer transition-colors font-sans font-semibold"
                 >
                   Preview Address
                 </button>
@@ -239,7 +239,7 @@ export function ByokPanel({ isOpen, onClose, activeAddress, onActivate, onForget
                   type="button"
                   onClick={handleActivate}
                   disabled={!keyInput.trim()}
-                  className="flex-1 py-2.5 px-4 bg-[#7fbbb3] hover:bg-[#a7c080] disabled:opacity-40 text-xs text-[#1e2528] font-bold cursor-pointer transition-colors font-mono"
+                  className="btn-pill flex-1 py-2.5 px-4 bg-[#111111] hover:bg-[#FF4D00] disabled:opacity-40 text-xs text-[#ECEBE6] font-bold cursor-pointer transition-colors font-sans"
                 >
                   Use This Key
                 </button>
@@ -247,9 +247,9 @@ export function ByokPanel({ isOpen, onClose, activeAddress, onActivate, onForget
             </>
           )}
 
-          <div className="text-[10.5px] text-[#859289] leading-relaxed border-t border-dashed border-[#d3c6aa]/16 pt-3">
+          <div className="text-[10.5px] text-[#555555] leading-relaxed border-t border-[#D4D3CD] pt-3 font-sans">
             How self-testing works: your key registers its own flight (treasury = you),
-            ships its own Aqua strategy, approves its own USDC, and settles — all signed
+            ships its own Aqua strategy, approves its own USDC, and settles, all signed
             in-browser. The vault's registrar rule lets anyone settle flights they
             registered; owner-authorized agents are unaffected.
           </div>

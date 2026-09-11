@@ -21,7 +21,7 @@ export interface TreasuryFundsCheck {
   ok: boolean;
   balanceMicro: bigint | null;
   neededMicro: bigint;
-  /** True when the check itself could not run (unknown balance) — caller decides. */
+  /** True when the check itself could not run (unknown balance); caller decides. */
   unknown: boolean;
 }
 
@@ -62,3 +62,31 @@ export function formatShortfall(check: TreasuryFundsCheck): string {
 
 export const FAUCET_HINT =
   "Top up testnet USDC from the Circle faucet to the treasury address and retry.";
+
+export const FAUCET_URL = "https://faucet.circle.com";
+
+/**
+ * Builds the insufficient-funds toast payload: shortfall + the exact wallet
+ * address to fund + a one-click faucet action.
+ */
+export function insufficientFundsToast(
+  check: TreasuryFundsCheck,
+  treasury: string
+): {
+  title: string;
+  description: string;
+  duration: number;
+  action: { label: string; onClick: () => void };
+} {
+  return {
+    title: "Insufficient Treasury USDC",
+    description:
+      `${formatShortfall(check)}. ` +
+      `Fund ${treasury} with Arc Testnet USDC, then retry.`,
+    duration: 15000,
+    action: {
+      label: "Open Faucet",
+      onClick: () => window.open(FAUCET_URL, "_blank", "noopener"),
+    },
+  };
+}

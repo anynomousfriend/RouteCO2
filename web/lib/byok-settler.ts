@@ -4,12 +4,12 @@
  * Bring-Your-Own-Key (BYOK) client-side settler for production self-testing.
  *
  * The visitor pastes a TESTNET private key which lives ONLY in browser memory
- * (React state/ref — never persisted, never logged, never sent to any server).
+ * (React state/ref: never persisted, never logged, never sent to any server).
  * All four settlement steps are signed locally with viem and broadcast straight
  * to the public Arc RPC: register → approve → ship → settle. The server is not
  * involved at all, so no server-side secrets are needed on production.
  *
- * TESTNET ONLY: nothing here prevents mainnet use technically — the UI must
+ * TESTNET ONLY: nothing here prevents mainnet use technically; the UI must
  * gate this behind explicit testnet warnings. Never paste a key holding real funds.
  */
 
@@ -178,7 +178,7 @@ export async function runByokSettlement(
   onStep?.({ step: "ship", txHash: shipTxHash });
   await publicClient.waitForTransactionReceipt({ hash: shipTxHash, confirmations: 1 });
 
-  // 4. Settle (registrar path — no allowlist needed for your own flight)
+  // 4. Settle (registrar path: no allowlist needed for your own flight)
   const settleTxHash = await walletClient.writeContract({
     address: p.vaultAddress,
     abi: SKYROUTE_VAULT_ABI,

@@ -10,7 +10,51 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Obsidian kept for legacy canvas scenes (Cesium/Leaflet dark basemap)
+        // Minimalist Editorial Palette (Warm Monochrome + Spot Pastels)
+        minimal: {
+          canvas: "#FBFBFA",
+          surface: "#FFFFFF",
+          card: "#FFFFFF",
+          border: "#EAEAEA",
+          borderSubtle: "rgba(0, 0, 0, 0.06)",
+          text: "#111111",
+          muted: "#787774",
+          subtle: "#999999",
+          charcoal: "#111111",
+          hover: "#2A2A2A",
+          kbd: "#F7F6F3",
+        },
+        pastel: {
+          green: "#EDF3EC",
+          greenText: "#346538",
+          blue: "#E1F3FE",
+          blueText: "#1F6C9F",
+          yellow: "#FBF3DB",
+          yellowText: "#956400",
+          red: "#FDEBEC",
+          redText: "#9F2F2D",
+        },
+        // Minimalist Architectural Technical-Chic Palette
+        putty: {
+          DEFAULT: "#ECEBE6", // Warm canvas off-white
+          canvas: "#ECEBE6",
+          panel: "#D6D5CF",  // Light monochrome panel
+          subtle: "#DFDED9",
+          contrast: "#E3E2DC",
+          paper: "#F3F2EE",
+          border: "#D4D3CD",  // Razor-thin 1px border
+        },
+        charcoal: {
+          DEFAULT: "#111111", // Matte charcoal-black
+          muted: "#555555",
+          faint: "#888888",
+        },
+        safety: {
+          orange: "#FF4D00",  // Industrial safety orange action accent
+          hover: "#E64A19",
+          faint: "rgba(255, 77, 0, 0.12)",
+        },
+        // Obsidian kept for legacy canvas scenes (Leaflet dark basemap)
         obsidian: {
           950: "#0B0F19",
           900: "#0E1424",
@@ -18,7 +62,7 @@ const config: Config = {
           700: "#1A2333",
           600: "#222F45",
         },
-        // Everforest — landing page aesthetic
+        // Everforest legacy tokens for backwards compatibility
         forest: {
           deep: "#1e2528",
           dim: "#272e33",
@@ -37,26 +81,13 @@ const config: Config = {
         everGreen: "#a7c080",
         everAqua: "#83c092",
         everBlue: "#7fbbb3",
-        indigo: {
-          400: "#6B7FF5",
-          500: "#4C63ED",
-          600: "#3B50DB",
-          700: "#2E3FB8",
-        },
-        cyan: {
-          400: "#22D3EE",
-          500: "#06B6D4",
-        },
-        amber: {
-          400: "#FBBF24",
-          500: "#F59E0B",
-        },
       },
       fontFamily: {
-        sans: ["Inter", "-apple-system", "BlinkMacSystemFont", "system-ui", "sans-serif"],
-        mono: ['"IBM Plex Mono"', "ui-monospace", "monospace"],
+        sans: ['"Geist"', '"SF Pro Display"', "-apple-system", "BlinkMacSystemFont", "system-ui", "sans-serif"],
+        mono: ['"Geist Mono"', '"IBM Plex Mono"', "ui-monospace", "monospace"],
+        editorial: ['"Newsreader"', '"Instrument Serif"', "Georgia", "serif"],
         display: ['"Space Grotesk"', "sans-serif"],
-        serif: ['"Times New Roman"', "Times", "Georgia", "serif"],
+        serif: ['"Newsreader"', '"Instrument Serif"', "Georgia", "serif"],
       },
       borderWidth: {
         1: "1px",

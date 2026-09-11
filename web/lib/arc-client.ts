@@ -2,7 +2,7 @@ import { createPublicClient, http, defineChain, type Address } from "viem";
 
 /**
  * Arc Testnet (Chain ID 5042002).
- * Ground truth: developers.circle.com + docs.arc.io — native gas IS USDC; Arc Testnet
+ * Ground truth: developers.circle.com + docs.arc.io: native gas IS USDC; Arc Testnet
  * USDC ERC-20 0x3600000000000000000000000000000000000000; RPC https://rpc.testnet.arc.network;
  * explorer https://testnet.arcscan.app. Arc rejects blob (type-3) transactions.
  * viem nativeCurrency decimals here describe the gas display unit; ERC-20 USDC itself is 6 decimals.

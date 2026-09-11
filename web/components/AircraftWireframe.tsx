@@ -415,10 +415,10 @@ export function AircraftWireframe({
         return;
       }
 
-      ctx.fillStyle = "#1e2528";
+      ctx.fillStyle = "#ECEBE6";
       ctx.fillRect(0, 0, w, h);
 
-      ctx.strokeStyle = "rgba(127, 187, 179, 0.05)";
+      ctx.strokeStyle = "rgba(212, 211, 205, 0.4)";
       ctx.lineWidth = 1;
       const gridSize = 16 * (window.devicePixelRatio || 1);
       ctx.beginPath();
@@ -485,22 +485,16 @@ export function AircraftWireframe({
         const glowR = (8 + Math.sin(pulseTime * 4) * 2) * thrustScale * (window.devicePixelRatio || 1);
 
         const radGrad = ctx.createRadialGradient(ex, ey, 0, ex, ey, glowR * 2.2);
-        if (thrustScale > 1.3) {
-          radGrad.addColorStop(0, "rgba(230, 152, 117, 0.85)");
-          radGrad.addColorStop(0.5, "rgba(167, 192, 128, 0.4)");
-          radGrad.addColorStop(1, "rgba(167, 192, 128, 0)");
-        } else {
-          radGrad.addColorStop(0, "rgba(127, 187, 179, 0.9)");
-          radGrad.addColorStop(0.4, "rgba(167, 192, 128, 0.45)");
-          radGrad.addColorStop(1, "rgba(167, 192, 128, 0)");
-        }
+        radGrad.addColorStop(0, "rgba(255, 77, 0, 0.85)");
+        radGrad.addColorStop(0.4, "rgba(255, 77, 0, 0.35)");
+        radGrad.addColorStop(1, "rgba(255, 77, 0, 0)");
 
         ctx.fillStyle = radGrad;
         ctx.beginPath();
         ctx.arc(ex, ey, glowR * 2.2, 0, Math.PI * 2);
         ctx.fill();
 
-        ctx.fillStyle = "#FFFFFF";
+        ctx.fillStyle = "#FF4D00";
         ctx.beginPath();
         ctx.arc(ex, ey, 1.8 * (window.devicePixelRatio || 1), 0, Math.PI * 2);
         ctx.fill();
@@ -515,24 +509,24 @@ export function AircraftWireframe({
 
         switch (type) {
           case "wing":
-            ctx.strokeStyle = `rgba(167, 192, 128, ${0.9 * depthAlpha})`;
-            ctx.lineWidth = 1.4 * (window.devicePixelRatio || 1);
-            break;
-          case "engine":
-            ctx.strokeStyle = `rgba(127, 187, 179, ${0.95 * depthAlpha})`;
-            ctx.lineWidth = 1.3 * (window.devicePixelRatio || 1);
-            break;
-          case "stabilizer":
-            ctx.strokeStyle = `rgba(219, 188, 127, ${0.85 * depthAlpha})`;
+            ctx.strokeStyle = `rgba(17, 17, 17, ${0.85 * depthAlpha})`;
             ctx.lineWidth = 1.2 * (window.devicePixelRatio || 1);
             break;
+          case "engine":
+            ctx.strokeStyle = `rgba(17, 17, 17, ${0.90 * depthAlpha})`;
+            ctx.lineWidth = 1.2 * (window.devicePixelRatio || 1);
+            break;
+          case "stabilizer":
+            ctx.strokeStyle = `rgba(17, 17, 17, ${0.80 * depthAlpha})`;
+            ctx.lineWidth = 1.0 * (window.devicePixelRatio || 1);
+            break;
           case "fuselage":
-            ctx.strokeStyle = `rgba(211, 198, 170, ${0.65 * depthAlpha})`;
-            ctx.lineWidth = 1.1 * (window.devicePixelRatio || 1);
+            ctx.strokeStyle = `rgba(17, 17, 17, ${0.70 * depthAlpha})`;
+            ctx.lineWidth = 1.0 * (window.devicePixelRatio || 1);
             break;
           case "detail":
           default:
-            ctx.strokeStyle = `rgba(133, 146, 137, ${0.4 * depthAlpha})`;
+            ctx.strokeStyle = `rgba(17, 17, 17, ${0.35 * depthAlpha})`;
             ctx.lineWidth = 0.8 * (window.devicePixelRatio || 1);
             break;
         }
@@ -544,7 +538,7 @@ export function AircraftWireframe({
       });
 
       const chSize = 10 * (window.devicePixelRatio || 1);
-      ctx.strokeStyle = "rgba(167, 192, 128, 0.35)";
+      ctx.strokeStyle = "rgba(17, 17, 17, 0.20)";
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(cx - chSize, cy);
@@ -587,7 +581,7 @@ export function AircraftWireframe({
   return (
     <div
       ref={containerRef}
-      className={`relative w-full h-full min-h-[220px] bg-[#1e2528] border border-dashed border-[#d3c6aa]/16 overflow-hidden select-none flex flex-col justify-between ${className}`}
+      className={`relative w-full h-full min-h-[220px] bg-[#ECEBE6] rounded-xl border border-[#D4D3CD] overflow-hidden select-none flex flex-col justify-between ${className}`}
     >
       <canvas
         ref={canvasRef}
@@ -599,26 +593,26 @@ export function AircraftWireframe({
 
       <div className="relative z-10 p-3 flex items-center justify-between pointer-events-none">
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 px-2 py-0.5 bg-[#2d353b]/80 border border-dashed border-[#d3c6aa]/16 backdrop-blur-md">
-            <Crosshair className="w-3 h-3 text-[#a7c080]" />
-            <span className="font-mono text-[10px] font-semibold tracking-wider text-[#d3c6aa] uppercase">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[#D6D5CF]/90 border border-[#D4D3CD] rounded-full backdrop-blur-md">
+            <Crosshair className="w-3 h-3 text-[#FF4D00]" />
+            <span className="font-mono text-[10px] font-semibold tracking-wider text-[#111111] uppercase">
               {specs.category}
             </span>
           </div>
-          <span className="font-mono text-[9px] text-[#859289]">
+          <span className="font-mono text-[9.5px] text-[#555555]">
             0x{icao24.toUpperCase().replace("0X", "")}
           </span>
         </div>
 
-        <div className="flex items-center gap-1 pointer-events-auto bg-[#1e2528]/90 p-1 border border-dashed border-[#d3c6aa]/16 backdrop-blur-md">
+        <div className="flex items-center gap-1 pointer-events-auto bg-[#D6D5CF]/90 p-1 rounded-full border border-[#D4D3CD] backdrop-blur-md">
           <button
             type="button"
             onClick={() => applyViewPreset("iso")}
             title="Isometric 3D View"
-            className={`px-1.5 py-0.5 text-[9px] font-mono font-semibold transition-all duration-120 active:scale-[0.95] ${
+            className={`px-2 py-0.5 text-[9px] font-mono font-semibold rounded-full transition-all duration-120 active:scale-[0.95] ${
               activeView === "iso"
-                ? "bg-[#a7c080] text-[#2d353b]"
-                : "text-[#859289] hover:text-[#d3c6aa]"
+                ? "bg-[#111111] text-[#ECEBE6]"
+                : "text-[#555555] hover:text-[#111111]"
             }`}
           >
             3D
@@ -627,10 +621,10 @@ export function AircraftWireframe({
             type="button"
             onClick={() => applyViewPreset("top")}
             title="Planform Top View"
-            className={`px-1.5 py-0.5 text-[9px] font-mono font-semibold transition-all duration-120 active:scale-[0.95] ${
+            className={`px-2 py-0.5 text-[9px] font-mono font-semibold rounded-full transition-all duration-120 active:scale-[0.95] ${
               activeView === "top"
-                ? "bg-[#a7c080] text-[#2d353b]"
-                : "text-[#859289] hover:text-[#d3c6aa]"
+                ? "bg-[#111111] text-[#ECEBE6]"
+                : "text-[#555555] hover:text-[#111111]"
             }`}
           >
             TOP
@@ -639,10 +633,10 @@ export function AircraftWireframe({
             type="button"
             onClick={() => applyViewPreset("front")}
             title="Front Elevation View"
-            className={`px-1.5 py-0.5 text-[9px] font-mono font-semibold transition-all duration-120 active:scale-[0.95] ${
+            className={`px-2 py-0.5 text-[9px] font-mono font-semibold rounded-full transition-all duration-120 active:scale-[0.95] ${
               activeView === "front"
-                ? "bg-[#a7c080] text-[#2d353b]"
-                : "text-[#859289] hover:text-[#d3c6aa]"
+                ? "bg-[#111111] text-[#ECEBE6]"
+                : "text-[#555555] hover:text-[#111111]"
             }`}
           >
             FRONT
@@ -654,8 +648,8 @@ export function AircraftWireframe({
               setActiveView("iso");
             }}
             title={isAutoOrbit ? "Pause Auto-Orbit" : "Resume Auto-Orbit"}
-            className={`p-1 text-[9px] font-mono transition-all duration-120 active:scale-[0.95] ${
-              isAutoOrbit ? "text-[#a7c080] bg-[#a7c080]/10" : "text-[#859289] hover:text-[#d3c6aa]"
+            className={`p-1 text-[9px] font-mono rounded-full transition-all duration-120 active:scale-[0.95] ${
+              isAutoOrbit ? "text-[#FF4D00] bg-[#FF4D00]/10" : "text-[#555555] hover:text-[#111111]"
             }`}
           >
             <RotateCcw className={`w-2.5 h-2.5 ${isAutoOrbit ? "animate-spin" : ""}`} style={{ animationDuration: "8s" }} />
@@ -663,34 +657,34 @@ export function AircraftWireframe({
         </div>
       </div>
 
-      <div className="relative z-10 px-3 flex items-center justify-between pointer-events-none text-[8.5px] font-mono text-[#859289] tracking-wider">
+      <div className="relative z-10 px-3 flex items-center justify-between pointer-events-none text-[8.5px] font-mono text-[#555555] tracking-wider">
         <div className="flex items-center gap-2">
-          <span>PITCH: <strong className="text-[#d3c6aa] font-semibold">{pitch}°</strong></span>
-          <span>YAW: <strong className="text-[#d3c6aa] font-semibold">{yaw}°</strong></span>
+          <span>PITCH: <strong className="text-[#111111] font-semibold">{pitch}°</strong></span>
+          <span>YAW: <strong className="text-[#111111] font-semibold">{yaw}°</strong></span>
         </div>
-        <div className="flex items-center gap-1 text-[#a7c080]/80">
-          <Sparkles className="w-2.5 h-2.5 text-[#a7c080]" />
+        <div className="flex items-center gap-1 text-[#FF4D00]">
+          <Sparkles className="w-2.5 h-2.5 text-[#FF4D00]" />
           <span>THRUST: {(thrustScale * 100).toFixed(0)}%</span>
         </div>
       </div>
 
       <div className="relative z-10 p-3 pt-0 flex items-end justify-between pointer-events-none">
         <div className="flex flex-col gap-0.5">
-          <div className="flex items-center gap-2 text-[10px] font-mono font-bold text-[#d3c6aa] tracking-tight">
+          <div className="flex items-center gap-2 text-[10px] font-mono font-bold text-[#111111] tracking-tight">
             <span>SPAN: {specs.wingspanM}m</span>
-            <span className="text-[#859289]">·</span>
+            <span className="text-[#888888]">·</span>
             <span>LEN: {specs.lengthM}m</span>
           </div>
-          <div className="text-[9px] font-mono text-[#859289] flex items-center gap-1.5">
+          <div className="text-[9px] font-mono text-[#555555] flex items-center gap-1.5">
             <span>{specs.engineModel}</span>
-            <span className="text-[#859289]">·</span>
-            <span className="text-[#9daaa4] tabular-nums">ALT: {altitudeFt.toLocaleString()} FT</span>
+            <span className="text-[#888888]">·</span>
+            <span className="text-[#111111] tabular-nums font-semibold">ALT: {altitudeFt.toLocaleString()} FT</span>
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[#1e2528]/90 border border-dashed border-[#d3c6aa]/16 text-[9.5px] font-mono text-[#9daaa4] backdrop-blur-md">
-          <span className="w-1.5 h-1.5 bg-[#a7c080] blink-step" />
-          <span className="text-[#d3c6aa]">1090 MHz Lock</span>
+        <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[#D6D5CF]/90 border border-[#D4D3CD] rounded-full text-[9.5px] font-mono text-[#111111] backdrop-blur-md">
+          <span className="w-1.5 h-1.5 bg-[#FF4D00] blink-step rounded-full" />
+          <span className="text-[#111111] font-medium">1090 MHz Lock</span>
         </div>
       </div>
     </div>

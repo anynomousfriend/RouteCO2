@@ -40,16 +40,22 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="bg-[#2d353b] text-[#d3c6aa] min-h-screen antialiased selection:bg-[#83c092] selection:text-[#2d353b] font-mono">
+      <body className="bg-[#ECEBE6] text-[#111111] min-h-screen antialiased selection:bg-[#FF4D00] selection:text-white font-sans">
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[9999] focus:px-4 focus:py-2 focus:bg-[#111111] focus:text-[#ECEBE6] focus:rounded-md focus:border focus:border-[#FF4D00] focus:shadow-lg text-xs font-mono"
+        >
+          Skip to content
+        </a>
         <Providers>
           {children}
           <AgentationToolbar />
           <Toaster
             position="bottom-right"
-            theme="dark"
+            theme="light"
             toastOptions={{
               className:
-                "!bg-[#1e2528] !border !border-dashed !border-[#d3c6aa]/20 !text-[#d3c6aa] !shadow-2xl !rounded-lg font-mono",
+                "!bg-[#ECEBE6] !border !border-[#D4D3CD] !text-[#111111] !shadow-xl !rounded-xl font-sans",
             }}
           />
         </Providers>

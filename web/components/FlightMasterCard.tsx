@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Search, MapPin, Fuel, Leaf } from "lucide-react";
+import { Search, MapPin, Fuel, Leaf, Radio, Zap } from "lucide-react";
 import NumberFlow from "@number-flow/react";
 import { AircraftWireframe } from "./AircraftWireframe";
 import type { PlayableTrack } from "../lib/replay-tracks";
@@ -25,6 +25,12 @@ interface FlightMasterCardProps {
   isCreditsLoading: boolean;
   onOpenCommandSearch: () => void;
   className?: string;
+  // 2D watch/arm wiring (live mode): record path or auto-settle on touchdown.
+  isWatched?: boolean;
+  isArmed?: boolean;
+  watchFixCount?: number;
+  onToggleWatch?: (callsign: string) => void;
+  onToggleArm?: (callsign: string) => void;
 }
 
 export function FlightMasterCard({
@@ -46,27 +52,34 @@ export function FlightMasterCard({
   isCreditsLoading,
   onOpenCommandSearch,
   className = "",
+  isWatched = false,
+  isArmed = false,
+  watchFixCount = 0,
+  onToggleWatch,
+  onToggleArm,
 }: FlightMasterCardProps) {
   // Replay mode with no playable track yet (no bundled seed, no recordings):
   // honest empty state instead of fabricated flight data.
   if (mode === "replay" && !scenario) {
     return (
       <div
-        className={`w-full max-w-[420px] bg-[#343f44] p-6 border border-dashed border-[#d3c6aa]/16 flex flex-col gap-3 items-center justify-center text-center min-h-[420px] select-none ${className}`}
+        className={`w-full max-w-[420px] bg-[#D6D5CF] p-6 rounded-xl border border-[#D4D3CD] flex flex-col gap-3 items-center justify-center text-center min-h-[420px] select-none ${className}`}
       >
-        <MapPin className="w-8 h-8 text-[#859289]" />
-        <div className="font-mono text-sm font-semibold text-[#d3c6aa]">
+        <div className="icon-circle w-10 h-10">
+          <MapPin className="w-5 h-5 text-[#111111]" />
+        </div>
+        <div className="font-sans text-sm font-bold text-[#111111]">
           No replay track available
         </div>
-        <div className="text-xs text-[#859289] font-mono leading-relaxed max-w-[280px]">
-          Watch a live flight on the radar globe to record its path, or wait for
-          the bundled demo track. Replay plays real recorded ADS-B — never
+        <div className="text-xs text-[#555555] font-sans leading-relaxed max-w-[280px]">
+          Watch a live flight on the 2D radar to record its path, or wait for
+          the bundled demo track. Replay plays real recorded ADS-B: never
           fabricated telemetry.
         </div>
         <button
           type="button"
           onClick={onOpenCommandSearch}
-          className="mt-1 px-4 py-2 bg-[#d3c6aa]/10 hover:bg-[#d3c6aa]/20 text-xs text-[#d3c6aa] cursor-pointer transition-colors font-mono border border-dashed border-[#d3c6aa]/16"
+          className="btn-pill mt-2 px-5 py-2 bg-[#111111] hover:bg-[#FF4D00] text-xs font-semibold text-[#ECEBE6] cursor-pointer transition-colors font-sans shadow-sm"
         >
           Browse Tracks (⌘K)
         </button>
@@ -136,88 +149,88 @@ export function FlightMasterCard({
 
   return (
     <div
-      className={`w-full max-w-[420px] bg-[#343f44] p-4 border border-dashed border-[#d3c6aa]/16 flex flex-col gap-2.5 select-none ${className}`}
+      className={`w-full max-w-[420px] bg-[#D6D5CF] p-4 rounded-xl border border-[#D4D3CD] flex flex-col gap-2.5 select-none ${className}`}
     >
       {/* ── TOP: SEARCH & 2X2 UNIFIED BENTO METRIC TILES ── */}
       <div className="flex flex-col gap-2 px-1">
-        {/* Top Search Input (⌘K) */}
+        {/* Top Search Input (⌘K): Stadium Pill */}
         <button
           type="button"
           onClick={onOpenCommandSearch}
-          className="w-full h-10 px-3.5 bg-[#2d353b] hover:bg-[#2d353b]/80 flex items-center justify-between text-xs cursor-pointer active:scale-[0.98] transition-[transform,colors] duration-140 border border-dashed border-[#d3c6aa]/16 hover:border-[#a7c080]/50"
+          className="btn-pill w-full h-10 px-4 bg-[#ECEBE6] hover:bg-[#ECEBE6]/80 flex items-center justify-between text-xs cursor-pointer transition-colors border border-[#D4D3CD] hover:border-[#111111]"
         >
           <div className="flex items-center gap-2">
-            <Search className="w-4 h-4 text-[#859289]" />
-            <span className="text-[#9daaa4] font-mono">Search flight, airport, model...</span>
+            <Search className="w-3.5 h-3.5 text-[#555555]" />
+            <span className="text-[#555555] font-sans">Search flight, airport, model...</span>
           </div>
-          <kbd className="px-2 py-0.5 text-[10px] font-mono text-[#9daaa4] bg-[#272e33] border border-[#d3c6aa]/16">
+          <kbd className="px-2 py-0.5 text-[10px] font-mono text-[#555555] bg-[#D6D5CF] rounded-md border border-[#D4D3CD]">
             ⌘K
           </kbd>
         </button>
 
-        {/* 2x2 Bento Metric Tiles — Everforest terminal readouts */}
-        <div className="grid grid-cols-2 gap-2.5 mx-1">
+        {/* 2x2 Bento Metric Tiles: Minimalist Architectural Readouts */}
+        <div className="grid grid-cols-2 gap-2.5 mx-0.5">
           {/* Tile 1: Arc L1 Finality */}
-          <div className="bg-[#1e2528] border border-dashed border-[#d3c6aa]/16 hover:border-[#7fbbb3]/50 p-3 flex flex-col justify-between h-[84px] transition-colors">
-            <span className="text-[9.5px] font-mono uppercase tracking-[0.14em] text-[#859289]">
+          <div className="bg-[#ECEBE6] border border-[#D4D3CD] rounded-lg p-3 flex flex-col justify-between h-[84px] transition-colors hover:border-[#111111]">
+            <span className="text-[9.5px] font-mono uppercase tracking-[0.14em] text-[#555555]">
               Arc L1 Finality
             </span>
             <div>
-              <div className="font-mono text-[19px] font-semibold text-[#d3c6aa] leading-none tabular-nums">
-                &lt; 800<span className="text-xs text-[#859289] ml-1 font-normal">ms</span>
+              <div className="font-mono text-[19px] font-semibold text-[#111111] leading-none tabular-nums">
+                &lt; 800<span className="text-xs text-[#555555] ml-1 font-normal">ms</span>
               </div>
-              <div className="text-[9px] font-mono text-[#a7c080] mt-1 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 bg-[#a7c080] blink-step" />
+              <div className="text-[9px] font-mono text-[#111111] mt-1 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 bg-[#FF4D00] blink-step rounded-full" />
                 <span>Sub-second 100%</span>
               </div>
             </div>
           </div>
 
           {/* Tile 2: Arc Treasury */}
-          <div className="bg-[#1e2528] border border-dashed border-[#d3c6aa]/16 hover:border-[#7fbbb3]/50 p-3 flex flex-col justify-between h-[84px] transition-colors">
-            <span className="text-[9.5px] font-mono uppercase tracking-[0.14em] text-[#859289]">
+          <div className="bg-[#ECEBE6] border border-[#D4D3CD] rounded-lg p-3 flex flex-col justify-between h-[84px] transition-colors hover:border-[#111111]">
+            <span className="text-[9.5px] font-mono uppercase tracking-[0.14em] text-[#555555]">
               Arc Treasury
             </span>
             <div>
-              <div className="font-mono text-[19px] font-semibold text-[#d3c6aa] leading-none tabular-nums">
+              <div className="font-mono text-[19px] font-semibold text-[#111111] leading-none tabular-nums">
                 ${isBalanceLoading ? "..." : (treasuryBalance || "0.00")}
-                <span className="text-xs ml-1 text-[#859289] font-normal">USDC</span>
+                <span className="text-xs ml-1 text-[#555555] font-normal">USDC</span>
               </div>
-              <div className="text-[9px] font-mono text-[#859289] mt-1">
+              <div className="text-[9px] font-mono text-[#555555] mt-1">
                 Chain ID 5042002
               </div>
             </div>
           </div>
 
           {/* Tile 3: Settlement Cost */}
-          <div className="bg-[#1e2528] border border-dashed border-[#d3c6aa]/16 hover:border-[#dbbc7f]/50 p-3 flex flex-col justify-between h-[84px] transition-colors">
-            <span className="text-[9.5px] font-mono uppercase tracking-[0.14em] text-[#859289]">
+          <div className="bg-[#ECEBE6] border border-[#D4D3CD] rounded-lg p-3 flex flex-col justify-between h-[84px] transition-colors hover:border-[#111111]">
+            <span className="text-[9.5px] font-mono uppercase tracking-[0.14em] text-[#555555]">
               Settlement Cost
             </span>
             <div>
-              <div className="font-mono text-[19px] font-semibold text-[#dbbc7f] leading-none tabular-nums">
+              <div className="font-mono text-[19px] font-semibold text-[#111111] leading-none tabular-nums">
                 ${scaledCostUSDC || (usdcCost / 1000).toFixed(4)}
-                <span className="text-xs ml-1 text-[#859289] font-normal">USDC</span>
+                <span className="text-xs ml-1 text-[#555555] font-normal">USDC</span>
               </div>
-              <div className="text-[9px] font-mono text-[#859289] mt-1">
+              <div className="text-[9px] font-mono text-[#555555] mt-1">
                 1:1k Scale (${usdcCost.toFixed(2)})
               </div>
             </div>
           </div>
 
           {/* Tile 4: Carbon Retired */}
-          <div className="bg-[#1e2528] border border-dashed border-[#d3c6aa]/16 hover:border-[#a7c080]/50 p-3 flex flex-col justify-between h-[84px] transition-colors">
-            <span className="text-[9.5px] font-mono uppercase tracking-[0.14em] text-[#859289]">
+          <div className="bg-[#ECEBE6] border border-[#D4D3CD] rounded-lg p-3 flex flex-col justify-between h-[84px] transition-colors hover:border-[#111111]">
+            <span className="text-[9.5px] font-mono uppercase tracking-[0.14em] text-[#555555]">
               Carbon Retired
             </span>
             <div>
-              <div className="font-mono text-[19px] font-semibold text-[#a7c080] leading-none tabular-nums flex items-baseline">
+              <div className="font-mono text-[19px] font-semibold text-[#111111] leading-none tabular-nums flex items-baseline">
                 {isCreditsLoading ? "..." : (
                   <NumberFlow value={Number(totalCarbonCredits || co2Kg)} />
                 )}
-                <span className="text-xs ml-1 text-[#a7c080]/80 font-normal">kg</span>
+                <span className="text-xs ml-1 text-[#555555] font-normal">kg</span>
               </div>
-              <div className="text-[9px] font-mono text-[#a7c080]/90 mt-1">
+              <div className="text-[9px] font-mono text-[#555555] mt-1">
                 Verified on Arc L1
               </div>
             </div>
@@ -226,51 +239,91 @@ export function FlightMasterCard({
       </div>
 
       {/* ── MIDDLE: FLIGHT IDENTITY & OPERATIONAL SPECS ── */}
-      <div className="flex flex-col gap-2 pt-2 border-t border-dashed border-[#d3c6aa]/16 px-1">
+      <div className="flex flex-col gap-2 pt-2 border-t border-[#D4D3CD] px-1">
         {/* Location Breadcrumb & Airspace Title */}
         <div>
-          <div className="flex items-center gap-1.5 text-[11px] font-medium text-[#859289] mb-1 font-mono">
-            <MapPin className="w-3.5 h-3.5 text-[#859289] shrink-0" />
+          <div className="flex items-center gap-1.5 text-[11px] font-medium text-[#555555] mb-1 font-sans">
+            <MapPin className="w-3.5 h-3.5 text-[#555555] shrink-0" />
             <span className="truncate">{locationText}</span>
           </div>
-          <h1 className="font-mono text-[26px] font-semibold tracking-tight text-[#d3c6aa] leading-none">
+          <h1 className="font-sans text-[28px] font-bold tracking-tight text-[#111111] leading-none">
             {callsign}
           </h1>
-          <div className="text-xs text-[#9daaa4] font-mono mt-1 flex items-center gap-1.5">
-            <span className="font-medium text-[#d3c6aa]">{airframe}</span>
-            <span className="text-[#859289]">·</span>
+          <div className="text-xs text-[#555555] font-sans mt-1.5 flex items-center gap-1.5">
+            <span className="font-medium text-[#111111]">{airframe}</span>
+            <span className="text-[#888888]">·</span>
             <span>{mode === "replay" ? (track?.airline || "Recorded Track") : "Commercial Carrier"}</span>
           </div>
         </div>
 
         {/* Active Transponder Status Tag */}
-        <div className="flex items-center justify-between px-3 py-1.5 bg-[#a7c080]/[0.08] border border-dashed border-[#a7c080]/30 text-[11px] font-mono">
+        <div className="flex items-center justify-between px-3 py-1.5 bg-[#ECEBE6] border border-[#D4D3CD] rounded-full text-[11px] font-mono">
           <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 bg-[#a7c080] blink-step" />
-            <span className="text-[#a7c080] font-medium">Transponder:</span>
-            <strong className="font-semibold text-[#d3c6aa]">0x{icaoHex.toUpperCase().replace("0X", "")}</strong>
+            <span className="w-2 h-2 bg-[#FF4D00] blink-step rounded-full" />
+            <span className="text-[#555555] font-medium">Transponder:</span>
+            <strong className="font-semibold text-[#111111]">0x{icaoHex.toUpperCase().replace("0X", "")}</strong>
           </span>
-          <span className="text-[#a7c080]/80 text-[10px] font-medium">1090 MHz ADS-B</span>
+          <span className="text-[#555555] text-[10px] font-medium">1090 MHz ADS-B</span>
         </div>
+
+        {/* Watch / Arm Actions (live 2D radar only) */}
+        {mode === "live" && liveCallsign && onToggleWatch && onToggleArm && (
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onToggleWatch(liveCallsign)}
+              title={
+                isWatched
+                  ? "Stop recording this flight's path"
+                  : "Record this flight's path: replay it after landing, then settle manually"
+              }
+              className={`btn-pill flex-1 flex items-center justify-center gap-2 py-2 px-3 font-mono text-xs font-semibold transition-[transform,opacity,background-color] duration-140 active:scale-[0.98] border cursor-pointer ${
+                isWatched
+                  ? "bg-[#FF4D00]/15 border-[#FF4D00] text-[#FF4D00]"
+                  : "bg-[#ECEBE6] border-[#D4D3CD] text-[#111111] hover:border-[#FF4D00]"
+              }`}
+            >
+              <Radio className={`w-3.5 h-3.5 ${isWatched ? "animate-pulse" : ""}`} />
+              <span>{isWatched ? `Watching · ${watchFixCount} fixes` : "Watch Flight"}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onToggleArm(liveCallsign)}
+              title={
+                isArmed
+                  ? "Disarm automatic touchdown settlement"
+                  : "Arm automatic carbon-offset settlement on touchdown"
+              }
+              className={`btn-pill flex-1 flex items-center justify-center gap-2 py-2 px-3 font-mono text-xs font-semibold transition-[transform,opacity,background-color] duration-140 active:scale-[0.98] border cursor-pointer ${
+                isArmed
+                  ? "bg-[#111111] border-[#111111] text-[#ECEBE6] hover:bg-[#FF4D00] hover:border-[#FF4D00]"
+                  : "bg-[#FF4D00] border-[#FF4D00] text-[#ECEBE6] hover:bg-[#FF4D00]/90"
+              }`}
+            >
+              <Zap className="w-3.5 h-3.5" />
+              <span>{isArmed ? "Armed · Auto-Settle" : "Arm Auto-Settle"}</span>
+            </button>
+          </div>
+        )}
 
         {/* Key Operational Metrics: Clean Hairline List */}
         <div className="space-y-1 text-xs pt-0.5">
-          <div className="flex items-center justify-between py-0.5 px-1">
-            <span className="flex items-center gap-2 text-[#859289] font-mono">
-              <Fuel className="w-3.5 h-3.5 text-[#e69875]" />
+          <div className="flex items-center justify-between py-1 px-1">
+            <span className="flex items-center gap-2 text-[#555555] font-sans">
+              <Fuel className="w-3.5 h-3.5 text-[#111111]" />
               <span>ICAO Hourly Fuel Burn</span>
             </span>
-            <span className="font-mono font-semibold text-[#d3c6aa] tabular-nums">
+            <span className="font-mono font-semibold text-[#111111] tabular-nums">
               {displayedHourlyBurn.toLocaleString()} kg/hr
             </span>
           </div>
 
-          <div className="flex items-center justify-between py-0.5 px-1 border-t border-dashed border-[#d3c6aa]/[0.08]">
-            <span className="flex items-center gap-2 text-[#859289] font-mono">
-              <Leaf className="w-3.5 h-3.5 text-[#a7c080]" />
+          <div className="flex items-center justify-between py-1 px-1 border-t border-[#D4D3CD]">
+            <span className="flex items-center gap-2 text-[#555555] font-sans">
+              <Leaf className="w-3.5 h-3.5 text-[#111111]" />
               <span>Verified CO₂ Factor</span>
             </span>
-            <span className="font-mono font-semibold text-[#d3c6aa] tabular-nums">
+            <span className="font-mono font-semibold text-[#111111] tabular-nums">
               3.16 CORSIA Standard
             </span>
           </div>
@@ -284,7 +337,7 @@ export function FlightMasterCard({
           airframe={airframe}
           icao24={icaoHex}
           hourlyBurnKg={displayedHourlyBurn}
-          runway={track?.runway || "—"}
+          runway={track?.runway || "--"}
           altitudeFt={altitudeFt}
           speedKts={speedKts}
           className="w-full h-full flex-1"

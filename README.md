@@ -109,13 +109,37 @@ The global aviation industry contributes **over 1 billion tonnes of CO₂ annual
   On touchdown, `SkyRouteVault` pulls real USDC via `aqua.pull(treasury, strategyHash, usdc, usdcAmount, vault)` in the settlement transaction and retires carbon in the on-ledger accumulator. Carbon retirement is on-chain accounting (`totalCarbonOffsetKg`) plus receipt events, not an ERC20 transfer.
 
 ### 🔵 Track 2: Arc / Circle — Best Agentic Economy with Circle Agent Stack
-* **Autonomous Flight Dispatcher Daemon**:
-  Operates as an autonomous Circle Agent Wallet (`agent/src/circle-wallet.ts`) with cryptographic policy guards: target contract whitelisting (`SkyRouteVault`), daily spend caps, and per-flight budget thresholds. SCA wallets are Gas Station gasless-capable.
+* **Circle Agent Wallet (live on Arc Testnet)**:
+  Real Agent Stack wallet provisioned via Circle CLI (`@circle-fin/cli`), holding + spending USDC autonomously:
+  `0x96209ca47eee6de66b3660face36277e0e9bb458` ([ArcScan](https://testnet.arcscan.app/address/0x96209ca47eee6de66b3660face36277e0e9bb458)).
+  Owner-authorized on `SkyRouteVault` via `setAuthorizedAgent`
+  ([tx](https://testnet.arcscan.app/tx/0xab88fc77ddc6570190b7bf857a6169c889c8bda815a42d4578b75b5cf20c42b6)).
+  Agent code: `agent/src/circle-cli-agent.ts` (CLI client + testnet spending-policy gate),
+  `agent/src/agent-wallet-settler.ts` (policy → register → preflight → settle), live tests in
+  `agent/test/agent-wallet-cli.live.test.ts`.
+* **Autonomous settlement, verified end-to-end (2026-09-11)**:
+  Agent Wallet registers the manifest + settles wheels-down; the treasury ships its own Aqua
+  strategy (maker-ships rule). Proof — flight AGENTW2: register
+  [`0xa04f9325…`](https://testnet.arcscan.app/tx/0xa04f9325a8420c846cbeb057c3cac90c80cc70e77a727535d1f79e5bcac0602f),
+  settle [`0x880a4f9d…`](https://testnet.arcscan.app/tx/0x880a4f9d286274b07fc76f94961a295d939247cbaffac05036d4ae57a37d8426)
+  (`WheelsDownSettled`: 900s airborne, 1896 kg CO₂, 0.10 USDC pulled); flight APIW3 settled end-to-end
+  through the rewired `POST /api/settle` demo path
+  ([`0xbfc76ad9…`](https://testnet.arcscan.app/tx/0xbfc76ad9351461aa3889921278d6e3cc138980577293eb0d8491d537de45a755)).
+  `web/app/api/settle/route.ts` signs register + settle with the Agent Wallet (raw-EOA key kept
+  ONLY for the server-treasury ship step); slow-relayer TIMEOUTs recover from chain logs instead of failing.
+* **Spending policy**:
+  Contract allowlist + per-flight / daily USDC caps enforced in code before every broadcast
+  (Circle CLI custom `wallet limit` policies are mainnet-only in CLI v1, so testnet policy lives in
+  `enforceAgentSpendingPolicy` + Privy session delegation on the web side).
+* **Known CLI v1 limits (documented, worked around)**:
+  `circle wallet execute` cannot encode `address[]`/`uint256[]` calldata (estimation 400s even though
+  local simulation succeeds) — hence treasury-ships-separately; backend confirmation poller lags the
+  chain by minutes (TIMEOUT ≠ failure — every broadcast verified via fast Arc RPC + event logs).
 * **Sub-Second Finality & Native USDC Gas**:
   Settles flight manifest registrations and wheels-down offsets natively in USDC on Arc Testnet (Chain ID `5042002`), eliminating multi-token conversion friction. Arc Testnet USDC: `0x3600000000000000000000000000000000000000`.
 * **Circle Developer-Controlled Wallets + Gas Station (`agent/src/circle-developer-client.ts`)**:
   Real `@circle-fin/developer-controlled-wallets` integration: wallet sets, `ARC-TESTNET` SCA wallets, SDK transfers with terminal-state polling. Testnet Gas Station policy sponsors qualifying SCA transactions; Circle Paymaster addresses documented for user-pays-USDC ERC-4337 flows.
-* **Automated Touchdown Settlement Broadcaster (`agent/src/arc-settler.ts`)**:
+* **Autonomous Touchdown Settlement Broadcaster (`agent/src/arc-settler.ts`)**:
   Autonomously monitors transponder states and submits verifiable transactions to Arc Testnet.
 
 ### 🛡️ Track 3: Privy — Seamless Onboarding & Scoped Session Keys

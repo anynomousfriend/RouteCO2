@@ -17,11 +17,11 @@ export function RouteCo2Logo({ className = 'w-10 h-10', size }: RouteCo2LogoProp
       role="img"
       aria-label="RouteCO2 Logo"
     >
-      {/* Clean Swiss Monochrome White Background Card */}
-      <rect width="120" height="120" rx="26" fill="#FFFFFF" />
+      {/* Architectural Monochrome Neutral Background Card */}
+      <rect width="120" height="120" rx="26" fill="#D6D5CF" stroke="#D4D3CD" strokeWidth="2" />
       
       {/* Climbing Airplane Vector Silhouette (Scaled to 48px width, 31% smaller) */}
-      <g transform="translate(36.00, 60.72) scale(0.00600, -0.00600)" fill="#000000" stroke="none">
+      <g transform="translate(36.00, 60.72) scale(0.00600, -0.00600)" fill="#111111" stroke="none">
         <path d="M6860 5619 c-174 -22 -209 -35 -995 -349 -866 -346 -4376 -1740 -4382 -1740 -3 0 -319 135 -703 300 -384 165 -707 300 -719 300 -12 0 -30 -9 -41 -20 -48 -48 -54 -41 472 -567 l492 -492 1 -64 c1 -35 6 -71 12 -81 8 -15 2 -26 -33 -61 -62 -63 -71 -136 -24 -213 27 -44 98 -76 154 -69 39 6 42 4 119 -70 102 -98 146 -118 257 -118 l85 0 1404 553 c773 304 1409 556 1415 560 21 13 -35 -50 -354 -397 -180 -194 -331 -367 -339 -386 -20 -51 -7 -96 46 -155 55 -61 89 -80 142 -80 47 0 -96 -105 1281 935 591 446 1086 819 1100 828 14 8 205 86 425 172 565 220 611 239 790 326 268 129 438 258 501 379 37 72 40 173 7 236 -90 170 -457 286 -891 283 -86 -1 -186 -5 -222 -10z" />
         <path d="M4050 5028 c-851 -91 -1134 -124 -1160 -137 -55 -27 -72 -70 -68 -173 3 -76 6 -90 28 -113 14 -15 34 -31 46 -35 11 -5 182 -20 380 -35 l359 -27 790 314 c435 173 797 317 805 321 35 13 -111 -1 -1180 -115z" />
       </g>
