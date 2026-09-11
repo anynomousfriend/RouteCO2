@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import {
   Plane,
   Calendar,
@@ -11,7 +11,31 @@ import {
   KeyRound,
   Clock,
   FlaskConical,
+  Copy,
+  Check,
 } from "lucide-react";
+
+/** Clipboard write with legacy fallback (non-secure contexts lack the API). */
+async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+}
 
 interface NavigationDockProps {
   activeTab: string;
@@ -60,6 +84,15 @@ export function NavigationDock({
   const shortAddress = walletAddress
     ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
     : "";
+  const [addressCopied, setAddressCopied] = useState(false);
+
+  const handleCopyAddress = async () => {
+    if (!walletAddress) return;
+    if (await copyToClipboard(walletAddress)) {
+      setAddressCopied(true);
+      setTimeout(() => setAddressCopied(false), 1500);
+    }
+  };
 
   return (
     <aside className="w-14 h-full bg-[#ECEBE6] border-r border-[#D4D3CD] flex flex-col items-center justify-between py-3 shrink-0 select-none z-20">
@@ -189,6 +222,25 @@ export function NavigationDock({
             </div>
           </div>
         </button>
+
+        {/* Copy Wallet Address (full address to clipboard; wallet button itself stays login/logout) */}
+        {walletAddress && (
+          <button
+            type="button"
+            onClick={handleCopyAddress}
+            aria-label="Copy wallet address"
+            className="group relative w-10 h-10 rounded-full flex items-center justify-center text-[#555555] hover:text-[#111111] hover:bg-[#D6D5CF] active:scale-[0.97] transition-[transform,colors] duration-140 cursor-pointer border border-transparent hover:border-[#D4D3CD]"
+          >
+            {addressCopied ? (
+              <Check className="w-4 h-4 text-[#1E6B37]" />
+            ) : (
+              <Copy className="w-4 h-4" />
+            )}
+            <div className="absolute left-12 px-2.5 py-1 bg-[#ECEBE6] text-[#111111] text-[11px] font-medium whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-140 shadow-xl z-50 border border-[#D4D3CD] rounded-md font-mono">
+              {addressCopied ? "Copied!" : `Copy ${shortAddress}`}
+            </div>
+          </button>
+        )}
 
         {/* Menu / Collapse */}
         <button

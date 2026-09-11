@@ -11,6 +11,8 @@ import {
   ExternalLink,
   ShieldAlert,
   Fingerprint,
+  Copy,
+  Check,
 } from "lucide-react";
 
 export interface SessionDelegationData {
@@ -51,6 +53,26 @@ export function SessionDelegationModal({
 }: SessionDelegationModalProps) {
   const [timeLeft, setTimeLeft] = useState<string>("");
   const [editableCap, setEditableCap] = useState<number>(sessionData.budgetCapUSDC);
+  const [vaultCopied, setVaultCopied] = useState(false);
+
+  const handleCopyVault = async () => {
+    try {
+      await navigator.clipboard.writeText(sessionData.targetVaultAddress);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = sessionData.targetVaultAddress;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand("copy");
+      } catch {}
+      document.body.removeChild(ta);
+    }
+    setVaultCopied(true);
+    setTimeout(() => setVaultCopied(false), 1500);
+  };
 
   useEffect(() => {
     setEditableCap(sessionData.budgetCapUSDC);
@@ -218,6 +240,20 @@ export function SessionDelegationModal({
                   {sessionData.targetVaultAddress}
                 </div>
               </div>
+              <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={handleCopyVault}
+                className="icon-circle p-1.5 text-[#555555] hover:text-[#111111] transition-colors duration-140 cursor-pointer"
+                title={vaultCopied ? "Copied!" : "Copy vault address"}
+                aria-label="Copy vault address"
+              >
+                {vaultCopied ? (
+                  <Check className="w-3.5 h-3.5 text-[#1E6B37]" />
+                ) : (
+                  <Copy className="w-3.5 h-3.5" />
+                )}
+              </button>
               <a
                 href={`https://testnet.arcscan.app/address/${sessionData.targetVaultAddress}`}
                 target="_blank"
@@ -227,6 +263,7 @@ export function SessionDelegationModal({
               >
                 <ExternalLink className="w-3.5 h-3.5" />
               </a>
+              </div>
             </div>
             <p className="text-[10.5px] text-[#555555]">
               Session key is restricted strictly to calls against SkyRouteVault and native USDC. Any

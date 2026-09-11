@@ -94,15 +94,6 @@ export function removeWatchedFlight(key: string): void {
   persist(loadWatchedFlights().filter((x) => x.key !== key));
 }
 
-export function clearWatchedFlights(): void {
-  if (!isBrowser()) return;
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-  } catch (err) {
-    console.warn("[Watchlist] Clear failed:", err);
-  }
-}
-
 /** Observed span in seconds covered by fixes (partial-leg honest metric). */
 export function observedSeconds(w: Pick<WatchedFlight, "fixes">): number {
   if (w.fixes.length < 2) return 0;

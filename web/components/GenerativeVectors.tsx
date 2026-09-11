@@ -136,31 +136,3 @@ export function TopologicalContourArt({ className = "w-full h-full", opacity = 0
     </svg>
   );
 }
-
-/**
- * Precision mathematical moiré / hairline grid matrix.
- */
-export function MoireLineArt({ className = "w-full h-12", opacity = 0.18 }: VectorProps) {
-  const lines = Array.from({ length: 48 }, (_, i) => i);
-  return (
-    <svg
-      viewBox="0 0 600 60"
-      className={className}
-      preserveAspectRatio="none"
-      fill="none"
-      stroke="#111111"
-      style={{ opacity }}
-      aria-hidden="true"
-    >
-      {lines.map((i) => {
-        const x = i * 12.5;
-        return (
-          <g key={`m-${i}`}>
-            <line x1={x} y1="0" x2={x + 18} y2="60" strokeWidth="0.65" />
-            <line x1={x + 9} y1="0" x2={x - 9} y2="60" strokeWidth="0.45" strokeDasharray="1 3" />
-          </g>
-        );
-      })}
-    </svg>
-  );
-}

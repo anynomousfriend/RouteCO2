@@ -20,5 +20,3 @@ export function AgentationToolbar() {
   }
   return <Agentation endpoint="http://localhost:4747" />;
 }
-
-export default AgentationToolbar;

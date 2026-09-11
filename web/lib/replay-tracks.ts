@@ -70,7 +70,15 @@ export function recordedToTrack(
   opts: { capturedAt?: number; label?: string } = {}
 ): PlayableTrack | null {
   if (w.fixes.length < 2) return null;
-  const frames: ReplayFrame[] = w.fixes.map((f) => ({
+  const sorted = [...w.fixes].sort((a, b) => a.t - b.t);
+  // Drop zero-dt duplicates (backfill + live merges can share a timestamp):
+  // they render as teleports and break per-frame touchdown detection.
+  const deduped = sorted.filter(
+    (f, i, a) =>
+      i === 0 || f.t !== a[i - 1].t || f.lat !== a[i - 1].lat || f.lon !== a[i - 1].lon
+  );
+  if (deduped.length < 2) return null;
+  const frames: ReplayFrame[] = deduped.map((f) => ({
     callsign: w.callsign,
     baroAltitudeMeters: Math.round(f.altM),
     velocityMps: Math.round(f.velMps),
@@ -83,7 +91,7 @@ export function recordedToTrack(
   }));
   const { category, hourlyBurnKg } = airframeFor(w.callsign, w.equipmentType);
   const last = frames[frames.length - 1];
-  const observed = Math.max(60, Math.round((w.fixes[w.fixes.length - 1].t - w.fixes[0].t) / 1000));
+  const observed = Math.max(60, Math.round((deduped[deduped.length - 1].t - deduped[0].t) / 1000));
   const tdIdx = touchdownIndexOf(frames);
   return {
     id: `rec-${w.key}`,
@@ -169,18 +177,6 @@ function bundledFileToTrack(data: BundledTrackFile): PlayableTrack | null {
   );
   if (track && data.leg) track.leg = data.leg;
   return track;
-}
-
-/** Loads the bundled canonical demo track (/demo-track.json); null when absent. */
-export async function loadBundledTrack(): Promise<PlayableTrack | null> {
-  try {
-    const res = await fetch("/demo-track.json", { cache: "force-cache" });
-    if (!res.ok) return null;
-    const data = (await res.json()) as BundledTrackFile;
-    return bundledFileToTrack(data);
-  } catch {
-    return null;
-  }
 }
 
 /** Hidden fixture path: synthetic scenarios only with ?dev-synthetic=1. */

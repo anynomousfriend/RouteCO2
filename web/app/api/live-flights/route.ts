@@ -11,6 +11,10 @@ let cachedFlights: LiveFlightSummary[] = [];
 let lastFetchTime = 0;
 let lastSource = "ADS-B Radar";
 const CACHE_TTL_MS = 10000; // 10 seconds cache
+// Upstream throttle state: a 429 starts a cooldown instead of a hammer loop,
+// or both sources throttle the IP and the radar goes dark for everyone.
+let openskyCooldownUntil = 0;
+let adsbCooldownUntil = 0;
 
 /**
  * Fetches live ADS-B telemetry from OpenSky Network (with OAuth2 Bearer Auth or Basic Auth).
@@ -36,7 +40,8 @@ async function fetchFromOpenSky(searchParams: URLSearchParams): Promise<LiveFlig
     "User-Agent": "RouteCO2-Console/1.0 (ETHOnline2026; FlightOperations)",
   };
 
-  const bearerToken = await getOpenSkyBearerToken();  if (bearerToken) {
+  const bearerToken = await getOpenSkyBearerToken();
+  if (bearerToken) {
     headers["Authorization"] = `Bearer ${bearerToken}`;
   } else if (process.env.OPENSKY_USERNAME && process.env.OPENSKY_PASSWORD) {
     const basic = Buffer.from(
@@ -45,18 +50,39 @@ async function fetchFromOpenSky(searchParams: URLSearchParams): Promise<LiveFlig
     headers["Authorization"] = `Basic ${basic}`;
   }
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 8000);
+  const doFetch = async (h: Record<string, string>): Promise<Response | null> => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    try {
+      const response = await fetch(queryUrl, { signal: controller.signal, headers: h });
+      clearTimeout(timeoutId);
+      return response;
+    } catch {
+      clearTimeout(timeoutId);
+      return null;
+    }
+  };
 
   try {
-    const response = await fetch(queryUrl, {
-      signal: controller.signal,
-      headers,
-    });
-    clearTimeout(timeoutId);
+    if (Date.now() < openskyCooldownUntil) return null;
+    let response = await doFetch(headers);
+    if (response && response.status === 429) {
+      // Authenticated bucket exhausted (heavy polling day): honor Retry-After,
+      // then retry once WITHOUT credentials — the anonymous bucket is independent.
+      const wait = Math.min(Math.max(parseInt(response.headers.get("x-rate-limit-retry-after-seconds") || "60", 10) || 60, 30), 1800);
+      openskyCooldownUntil = Date.now() + wait * 1000;
+      console.warn(`[OpenSky] 429: cooling ${wait}s; retrying anonymous bucket once`);
+      const anon = { ...headers };
+      delete anon["Authorization"];
+      response = await doFetch(anon);
+      if (response && response.status === 429) {
+        console.warn("[OpenSky] anonymous bucket also throttled");
+        return null;
+      }
+    }
 
-    if (!response.ok) {
-      console.warn(`[OpenSky API] Query returned status ${response.status}`);
+    if (!response || !response.ok) {
+      console.warn(`[OpenSky API] Query returned status ${response ? response.status : "network-error"}`);
       return null;
     }
 
@@ -108,7 +134,6 @@ async function fetchFromOpenSky(searchParams: URLSearchParams): Promise<LiveFlig
     }
     return filtered;
   } catch {
-    clearTimeout(timeoutId);
     return null;
   }
 }
@@ -223,6 +248,7 @@ function adsbAcToSummary(a: any): LiveFlightSummary | null {
  */
 async function fetchWatchedDirect(hexes: string[]): Promise<LiveFlightSummary[]> {
   const out: LiveFlightSummary[] = [];
+  if (Date.now() < adsbCooldownUntil) return out;
   await Promise.all(
     hexes.slice(0, 20).map(async (hex) => {
       const controller = new AbortController();
@@ -236,6 +262,11 @@ async function fetchWatchedDirect(hexes: string[]): Promise<LiveFlightSummary[]>
           },
         });
         clearTimeout(timeoutId);
+        if (res.status === 429) {
+          adsbCooldownUntil = Date.now() + 120_000;
+          console.warn("[adsb.lol] 429 on direct lookup: cooling down 120s");
+          return;
+        }
         if (!res.ok) return;
         const data = await res.json();
         const list: any[] = Array.isArray(data.ac) ? data.ac : [];
@@ -287,12 +318,15 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // 3. Cross-source repair for watched keys: merge direct per-aircraft
-  // lookups. A direct on-ground report wins over a stale/absent entry so a
-  // watched landing always flips to LANDED_RECORDED exactly once.
+  // 3. Cross-source repair for watched keys MISSING from the base feed.
+  // OpenSky already includes on-ground states for ?watch= keys, so a present
+  // key needs no extra call — this keeps adsb.lol spend near zero in steady
+  // state while still catching landings OpenSky drops (coverage gaps).
   if (flights && flights.length > 0 && watchHexes.length > 0) {
     try {
-      const direct = await fetchWatchedDirect(watchHexes);
+      const have = new Set(flights.map((f) => f.icao24));
+      const missing = watchHexes.filter((hex) => !have.has(hex));
+      const direct = missing.length > 0 ? await fetchWatchedDirect(missing) : [];
       if (direct.length > 0) {
         const byIcao = new Map(flights.map((f) => [f.icao24, f]));
         for (const d of direct) {

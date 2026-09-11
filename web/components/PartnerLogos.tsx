@@ -6,29 +6,6 @@ interface LogoProps {
   className?: string;
 }
 
-export function OpenSkyLogo({ size = 22, color = 'currentColor', className = '' }: LogoProps) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width={size}
-      height={size}
-      className={className}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-label="OpenSky Network"
-    >
-      <path
-        d="M12 2v20M8 7l4-4 4 4M5 12a7 7 0 0 1 14 0M2 12a10 10 0 0 1 20 0M10 22h4"
-        stroke={color}
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <circle cx="12" cy="12" r="2" fill={color} />
-    </svg>
-  );
-}
-
 /** Official 1inch Vector Wordmark Logo from 1inch.com */
 export function OneInchLogo({ size = 22, color = 'currentColor', className = '' }: LogoProps) {
   const width = Math.round((size * 178) / 50);
@@ -56,20 +33,6 @@ export function CircleLogo({ size = 22, className = '' }: LogoProps) {
     <img
       src="/arc-logo.png"
       alt="Arc Network"
-      width={size}
-      height={size}
-      className={`inline-block shrink-0 rounded-sm ${className}`}
-      style={{ width: size, height: size, objectFit: 'contain' }}
-    />
-  );
-}
-
-/** Official Arc Testnet Logo */
-export function ArcLogo({ size = 22, className = '' }: LogoProps) {
-  return (
-    <img
-      src="/arc-logo.png"
-      alt="Arc Testnet"
       width={size}
       height={size}
       className={`inline-block shrink-0 rounded-sm ${className}`}

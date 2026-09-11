@@ -230,40 +230,16 @@ export default function WindyFlightMap({
     }
   }, [selectedFlight?.callsign, mode]);
 
-  // Update Replay Flight Descent Track & Airplane Position
+  // Static replay layers (dotted track, sector box, touchdown ring): updated
+  // only when the track data itself changes — NEVER per playback frame, so
+  // the map doesn't bounce under the plane while it moves.
+  const fittedBoundsKeyRef = useRef<string | null>(null);
   useEffect(() => {
     if (!mapInstanceRef.current) return;
 
     import("leaflet")
       .then((L) => {
-        // Clear Replay elements if in live mode
-        if (mode !== "replay") {
-          if (replayPolylineRef.current) {
-            mapInstanceRef.current.removeLayer(replayPolylineRef.current);
-            replayPolylineRef.current = null;
-          }
-          if (replayMarkerRef.current) {
-            mapInstanceRef.current.removeLayer(replayMarkerRef.current);
-            replayMarkerRef.current = null;
-          }
-          if (touchdownMarkerRef.current) {
-            mapInstanceRef.current.removeLayer(touchdownMarkerRef.current);
-            touchdownMarkerRef.current = null;
-          }
-          return;
-        }
-
-        const validTrack = (replayTrack || []).filter(
-          (f) =>
-            f &&
-            f.latitude != null &&
-            f.longitude != null &&
-            !isNaN(f.latitude) &&
-            !isNaN(f.longitude)
-        );
-
-        // If replay track exists, update or recreate polyline
-        if (validTrack.length > 0) {
+        const clearStatic = () => {
           if (replayPolylineRef.current) {
             mapInstanceRef.current.removeLayer(replayPolylineRef.current);
             replayPolylineRef.current = null;
@@ -276,39 +252,68 @@ export default function WindyFlightMap({
             mapInstanceRef.current.removeLayer(sectorRectRef.current);
             sectorRectRef.current = null;
           }
+        };
+        // Live mode, or marker-only cleanup when leaving replay, shares this.
+        if (mode !== "replay") {
+          clearStatic();
+          fittedBoundsKeyRef.current = null;
+          return;
+        }
 
-          const latlngs: [number, number][] = validTrack.map((f) => [f.latitude, f.longitude]);
+        const validTrack = (replayTrack || []).filter(
+          (f) =>
+            f &&
+            f.latitude != null &&
+            f.longitude != null &&
+            !isNaN(f.latitude) &&
+            !isNaN(f.longitude)
+        );
+        if (validTrack.length === 0) {
+          clearStatic();
+          return;
+        }
 
-          const polyline = L.polyline(latlngs, {
+        const latlngs: [number, number][] = validTrack.map((f) => [f.latitude, f.longitude]);
+        if (replayPolylineRef.current) {
+          // In-place update: no flicker, no refit, plane keeps gliding.
+          replayPolylineRef.current.setLatLngs(latlngs);
+        } else {
+          replayPolylineRef.current = L.polyline(latlngs, {
             color: "#111111",
             weight: 3,
             opacity: 0.85,
             dashArray: "4, 6",
             lineCap: "round",
           }).addTo(mapInstanceRef.current);
+        }
 
-          replayPolylineRef.current = polyline;
-
-          // Destination Runway Approach Bounding Box
-          const lastFrame = validTrack[validTrack.length - 1];
-          const dLat = 0.035;
-          const dLng = 0.055;
-          const bounds: [[number, number], [number, number]] = [
-            [lastFrame.latitude - dLat, lastFrame.longitude - dLng],
-            [lastFrame.latitude + dLat, lastFrame.longitude + dLng],
-          ];
-
-          const sectorRect = L.rectangle(bounds, {
+        // Destination Runway Approach Bounding Box
+        const lastFrame = validTrack[validTrack.length - 1];
+        const dLat = 0.035;
+        const dLng = 0.055;
+        const bounds: [[number, number], [number, number]] = [
+          [lastFrame.latitude - dLat, lastFrame.longitude - dLng],
+          [lastFrame.latitude + dLat, lastFrame.longitude + dLng],
+        ];
+        if (sectorRectRef.current) {
+          sectorRectRef.current.setBounds(bounds);
+        } else {
+          sectorRectRef.current = L.rectangle(bounds, {
             color: "#FF4D00",
             weight: 1.5,
             dashArray: "4, 4",
             fillColor: "#FF4D00",
             fillOpacity: 0.08,
           }).addTo(mapInstanceRef.current);
+        }
 
-          sectorRectRef.current = sectorRect;
-
-          // Destination Airport Touchdown Ring
+        // Destination Airport Touchdown Ring (recreate only if target moved)
+        const tdKey = `${lastFrame.latitude.toFixed(4)},${lastFrame.longitude.toFixed(4)}:${destinationLabel || ""}`;
+        if (!touchdownMarkerRef.current || (touchdownMarkerRef.current as any)._tdKey !== tdKey) {
+          if (touchdownMarkerRef.current) {
+            mapInstanceRef.current.removeLayer(touchdownMarkerRef.current);
+            touchdownMarkerRef.current = null;
+          }
           const tdIcon = L.divIcon({
             html: `
               <div style="display: flex; align-items: center; justify-content: center; width: 32px; height: 32px;">
@@ -333,20 +338,52 @@ export default function WindyFlightMap({
               { permanent: true, direction: "bottom", offset: [0, 10] }
             )
             .addTo(mapInstanceRef.current);
-
-          try {
-            mapInstanceRef.current.fitBounds(polyline.getBounds(), { padding: [60, 60] });
-          } catch {}
+          (touchdownMarkerRef.current as any)._tdKey = tdKey;
         }
 
-        // Update Moving Replay Airplane Marker
+        // Refit only when the track itself materially changes (new recording
+        // selected or fixes appended on a poll) — never on frame steps, which
+        // reuse the same frames array.
+        const first = validTrack[0];
+        const fitKey = `${validTrack.length}:${first.timestamp}:${lastFrame.timestamp}`;
+        if (fittedBoundsKeyRef.current !== fitKey && replayPolylineRef.current) {
+          fittedBoundsKeyRef.current = fitKey;
+          try {
+            mapInstanceRef.current.fitBounds(replayPolylineRef.current.getBounds(), { padding: [60, 60] });
+          } catch {}
+        }
+      })
+      .catch((err) => {
+        console.error("Leaflet replay track update error:", err);
+      });
+    // replayFrame intentionally excluded: marker motion lives below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, replayTrack, destinationLabel]);
+
+  // Moving replay airplane marker: the ONLY thing that updates per frame.
+  // Position eases via the .replay-plane-clean CSS transition (see routeco2.css).
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+
+    import("leaflet")
+      .then((L) => {
+        if (mode !== "replay") {
+          if (replayMarkerRef.current) {
+            mapInstanceRef.current.removeLayer(replayMarkerRef.current);
+            replayMarkerRef.current = null;
+          }
+          return;
+        }
         if (
-          replayFrame &&
-          replayFrame.latitude != null &&
-          replayFrame.longitude != null &&
-          !isNaN(replayFrame.latitude) &&
-          !isNaN(replayFrame.longitude)
+          !replayFrame ||
+          replayFrame.latitude == null ||
+          replayFrame.longitude == null ||
+          isNaN(replayFrame.latitude) ||
+          isNaN(replayFrame.longitude)
         ) {
+          return;
+        }
+        {
           const isTouchdown = replayFrame.onGround;
           const color = isTouchdown ? "#1E6B37" : "#FF4D00";
           const fill = isTouchdown ? "#1E6B37" : "#111111";
@@ -381,9 +418,9 @@ export default function WindyFlightMap({
         }
       })
       .catch((err) => {
-        console.error("Leaflet replay update error:", err);
+        console.error("Leaflet replay marker update error:", err);
       });
-  }, [mode, replayFrame, replayTrack, destinationLabel]);
+  }, [mode, replayFrame]);
 
   if (!isMounted) {
     return (

@@ -956,7 +956,10 @@ export default function FlightOperationsConsole() {
       : Boolean(activeData?.onGround);
 
   // Trigger Real Settlement on Arc Testnet via /api/settle
-  const triggerWheelsDownSettlement = async (targetFrame?: any) => {
+  // opts.openCertificate === false: autoplay path (replay timer) — the full-screen
+  // certificate must NOT hijack the screen mid-playback (it covers the track
+  // list). The toast still fires and the Audit button opens the certificate.
+  const triggerWheelsDownSettlement = async (targetFrame?: any, opts?: { openCertificate?: boolean }) => {
     if (isSettling) return;
 
     // Track 3: Verify Privy Scoped Session Delegation Key Bounds
@@ -1210,7 +1213,9 @@ export default function FlightOperationsConsole() {
         trackSource: !isLive ? activeTrack?.source : undefined,
       };
       setCertificateData(cert);
-      setIsCertificateOpen(true);
+      if (opts?.openCertificate !== false) {
+        setIsCertificateOpen(true);
+      }
 
       toast.success(
         isLive
@@ -1218,7 +1223,10 @@ export default function FlightOperationsConsole() {
           : "Wheels-Down Settled on Arc Testnet! 🛬",
         {
           id: toastId,
-          description: `${callsign} reconciled on-chain. Block #${data.blockNumber} (Gas: ${data.gasUsed}).`,
+          description:
+            opts?.openCertificate === false
+              ? `${callsign} reconciled on-chain. Block #${data.blockNumber} (Gas: ${data.gasUsed}). Certificate ready under Audit.`
+              : `${callsign} reconciled on-chain. Block #${data.blockNumber} (Gas: ${data.gasUsed}).`,
           duration: 12000,
           action: {
             label: "View ArcScan",
@@ -1301,7 +1309,8 @@ export default function FlightOperationsConsole() {
           !isSettled &&
           !isSettling
         ) {
-          triggerWheelsDownSettlement(currentFrame);
+          // Autoplay: settle without popping the certificate over the replay.
+          triggerWheelsDownSettlement(currentFrame, { openCertificate: false });
         }
 
         return next;

@@ -14,16 +14,12 @@
     "@number-flow/react": "^0.5.5",
     "@privy-io/react-auth": "^3.40.0",
     "@stripe/stripe-js": "^1.54.2",
-    "clsx": "^2.1.1",
-    "egm96-universal": "^1.1.1",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.475.0",
     "next": "^15.5.25",
-    "next-themes": "^0.4.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "sonner": "^2.0.1",
-    "tailwind-merge": "^3.0.1",
     "viem": "^2.23.0"
   },
   "devDependencies": {

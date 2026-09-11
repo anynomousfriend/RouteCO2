@@ -92,64 +92,6 @@ export function resolveAirframe(typeCode?: string | null, callsign?: string | nu
   return DEFAULT_AIRFRAME;
 }
 
-export interface FlightEmissionState {
-  altitudeM: number;
-  verticalRateMps: number;
-  speedMps: number;
-  onGround: boolean;
-}
-
-/**
- * Compute instantaneous fuel burn rate (kg/s) and emission factor using SwapVM curve rules:
- * 1. Base rate = (baseCruiseBurnKgPerHour / 3600)
- * 2. Altitude cruise discount: altitude > 9000m -> 0.80x
- * 3. Climb thrust scaling: verticalRate > 2.0 m/s -> scale up to climbBurnMultiplier (max 1.35x - 1.50x)
- * 4. Descent low-idle factor: verticalRate < -2.0 m/s -> descentBurnMultiplier (0.45x)
- */
-export function computeInstantaneousEmissions(
-  telemetry: FlightEmissionState,
-  airframe: AirframeProfile = DEFAULT_AIRFRAME
-) {
-  if (telemetry.onGround) {
-    // Taxi fuel consumption (~10-12 kg/min = 0.18 kg/s)
-    const taxiBurnKgPerSec = (airframe.baseCruiseBurnKgPerHour * 0.25) / 3600;
-    return {
-      fuelBurnKgPerSec: taxiBurnKgPerSec,
-      co2KgPerSec: taxiBurnKgPerSec * ICAO_CO2_PER_KG_FUEL,
-      curveMultiplier: 0.25,
-      phase: "GROUND" as const,
-    };
-  }
-
-  const baseKgPerSec = airframe.baseCruiseBurnKgPerHour / 3600;
-  let multiplier = 1.0;
-  let phase: "CLIMB" | "CRUISE" | "DESCENT" | "LEVEL_FLIGHT" = "LEVEL_FLIGHT";
-
-  if (telemetry.verticalRateMps > 2.0) {
-    // Climb phase: high thrust requirement
-    multiplier = airframe.climbBurnMultiplier;
-    phase = "CLIMB";
-  } else if (telemetry.verticalRateMps < -2.0) {
-    // Descent phase: flight idle thrust
-    multiplier = airframe.descentBurnMultiplier;
-    phase = "DESCENT";
-  } else if (telemetry.altitudeM > 9000) {
-    // Cruise altitude discount: thin air aerodynamic efficiency
-    multiplier = 0.80;
-    phase = "CRUISE";
-  }
-
-  const fuelBurnKgPerSec = baseKgPerSec * multiplier;
-  const co2KgPerSec = fuelBurnKgPerSec * ICAO_CO2_PER_KG_FUEL;
-
-  return {
-    fuelBurnKgPerSec,
-    co2KgPerSec,
-    curveMultiplier: multiplier,
-    phase,
-  };
-}
-
 export interface LandedFlightSettlementEstimate {
   callsign: string;
   icao24: string;

@@ -47,6 +47,10 @@ const HUBS = [
   { iata: "LHR", lat: 51.47, lon: -0.4543 },
   { iata: "AMS", lat: 52.3105, lon: 4.7683 },
 ];
+// Upstream throttle state: honor 429s with cooldowns instead of hammering,
+// or both sources throttle the IP and the radar goes dark.
+let openskyCooldownUntil = 0;
+let adsbCooldownUntil = 0;
 const MAX_ALT_M = 3500;
 const FINAL_ALT_M = 1500;
 const MAX_DESCENT_VSI = -2.0;
@@ -164,10 +168,12 @@ function toSummary(o) {
   };
 }
 
-async function fetchOpenSky(watchSet) {
+async function fetchOpenSky(watchSet, { anonymous = false } = {}) {
   const headers = { Accept: "application/json", "User-Agent": "RouteCO2-Recorder/1.0 (ETHOnline2026)" };
-  const token = await getBearerToken();
-  if (token) headers.Authorization = `Bearer ${token}`;
+  if (!anonymous) {
+    const token = await getBearerToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+  }
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 9000);
   try {
@@ -176,6 +182,12 @@ async function fetchOpenSky(watchSet) {
       { signal: ctrl.signal, headers }
     );
     clearTimeout(t);
+    if (res.status === 429) {
+      const wait = Math.min(Math.max(parseInt(res.headers.get("x-rate-limit-retry-after-seconds") || "60", 10), 30), 1800);
+      openskyCooldownUntil = Date.now() + wait * 1000;
+      log(`OpenSky 429${anonymous ? " (anonymous)" : ""}: cooling down ${wait}s`);
+      return null;
+    }
     if (!res.ok) return null;
     const data = await res.json();
     if (!Array.isArray(data.states)) return null;
@@ -230,6 +242,7 @@ function adsbAcToSummary(a) {
 }
 
 async function fetchAdsbHub(lat, lon) {
+  if (Date.now() < adsbCooldownUntil) return [];
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 7000);
   try {
@@ -240,6 +253,11 @@ async function fetchAdsbHub(lat, lon) {
       headers: { Accept: "application/json", "User-Agent": "RouteCO2-Recorder/1.0 (ETHOnline2026)" },
     });
     clearTimeout(t);
+    if (res.status === 429) {
+      adsbCooldownUntil = Date.now() + 120_000;
+      log("adsb.lol 429: cooling down 120s (backing off to lift the throttle)");
+      return [];
+    }
     if (!res.ok) return [];
     const data = await res.json();
     return (Array.isArray(data.ac) ? data.ac : []).map(adsbAcToSummary).filter(Boolean);
@@ -251,6 +269,7 @@ async function fetchAdsbHub(lat, lon) {
 
 async function fetchWatchedDirect(hexes) {
   const out = [];
+  if (Date.now() < adsbCooldownUntil) return out;
   await Promise.all(
     hexes.slice(0, 20).map(async (hex) => {
       const ctrl = new AbortController();
@@ -261,6 +280,11 @@ async function fetchWatchedDirect(hexes) {
           headers: { Accept: "application/json", "User-Agent": "RouteCO2-Recorder/1.0 (ETHOnline2026)" },
         });
         clearTimeout(t);
+        if (res.status === 429) {
+          adsbCooldownUntil = Date.now() + 120_000;
+          log("adsb.lol 429 on direct lookup: cooling down 120s");
+          return;
+        }
         if (!res.ok) return;
         const data = await res.json();
         for (const a of Array.isArray(data.ac) ? data.ac : []) {
@@ -374,23 +398,28 @@ async function tick() {
   const watching = watches.filter((w) => w.status === "WATCHING");
   const watchSet = new Set(watching.map((w) => (w.icao24 || w.key || "").toLowerCase()));
 
-  // 1. Live snapshot: OpenSky bbox, adsb.lol hubs on failure, direct repair for watches.
-  let flights = await fetchOpenSky(watchSet);
+  // 1. Live snapshot: OpenSky first (authenticated; anonymous retry on 429
+  // since the buckets are independent), one rotating adsb.lol hub on failure
+  // (not all four every poll — that burns the throttle budget), and direct
+  // per-aircraft repair ONLY for watched keys OpenSky didn't return.
+  let flights = null;
   let source = "opensky";
-  if (!flights || flights.length === 0) {
-    const perHub = await Promise.all(HUBS.map((h) => fetchAdsbHub(h.lat, h.lon)));
-    const seen = new Set();
-    flights = [];
-    for (const s of perHub.flat()) {
-      if (seen.has(s.icao24)) continue;
-      seen.add(s.icao24);
-      flights.push(s);
-      if (flights.length >= 250) break;
-    }
-    source = "adsb.lol-hubs";
+  if (Date.now() >= openskyCooldownUntil) {
+    flights = await fetchOpenSky(watchSet);
   }
-  if (watchSet.size > 0) {
-    const direct = await fetchWatchedDirect([...watchSet]);
+  if ((!flights || flights.length === 0) && Date.now() >= openskyCooldownUntil) {
+    flights = await fetchOpenSky(watchSet, { anonymous: true });
+    if (flights && flights.length > 0) source = "opensky-anon";
+  }
+  if (!flights || flights.length === 0) {
+    const hub = HUBS[poll % HUBS.length];
+    flights = await fetchAdsbHub(hub.lat, hub.lon);
+    source = `adsb.lol-${hub.iata}`;
+  }
+  if (watchSet.size > 0 && flights) {
+    const have = new Set(flights.map((f) => f.icao24));
+    const missing = [...watchSet].filter((hex) => !have.has(hex));
+    const direct = missing.length > 0 ? await fetchWatchedDirect(missing) : [];
     if (direct.length > 0) {
       const byIcao = new Map(flights.map((f) => [f.icao24, f]));
       for (const d of direct) {
@@ -401,6 +430,7 @@ async function tick() {
       source += "+direct";
     }
   }
+  flights = flights || [];
   const byKey = new Map();
   for (const f of flights) {
     byKey.set((f.icao24 || f.callsign).toLowerCase(), f);

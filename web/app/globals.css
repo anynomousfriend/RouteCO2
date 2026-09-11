@@ -426,3 +426,16 @@ body {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
+/* Replay marker glide: Leaflet repositions the plane icon via transform on
+   every frame tick. Easing that transform turns discrete ADS-B steps into
+   continuous motion along the dotted track. */
+.leaflet-marker-icon.replay-plane-clean {
+  transition: transform 0.45s linear;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .leaflet-marker-icon.replay-plane-clean {
+    transition: none;
+  }
+}
+
