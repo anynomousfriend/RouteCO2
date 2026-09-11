@@ -30,6 +30,7 @@ import {
   saveStoredSettledFlight,
   mergeWithStoredSettled,
 } from "@/lib/settled-storage";
+import { scaleUsdcMicro, scaledUsdc, demoScaleLabel } from "@/lib/demo-scale";
 
 export interface LandedFlightRecord {
   id: string;
@@ -236,12 +237,16 @@ export default function LandedSettlementQueue({
     .reduce((acc, curr) => acc + curr.estimate.usdcCost, 0)
     .toFixed(2);
 
-  // Execute on-chain settlement on Arc Testnet via /api/settle
+  // Execute on-chain settlement on Arc Testnet via /api/settle.
+  // Session cap and treasury guard gate the EXECUTED (demo-scaled) spend;
+  // the wire format stays full-economics (the server scales authoritatively).
   const handleSettleFlight = async (flight: LandedFlightRecord) => {
+    const fullMicro = BigInt(flight.estimate.usdcAmountMicro.toString());
+    const executedUsdc = scaledUsdc(flight.estimate.usdcCost);
     // Budget check against active session cap (server route only; BYOK spends own money)
-    if (!byokKey && flight.estimate.usdcCost > activeSessionCap) {
+    if (!byokKey && executedUsdc > activeSessionCap) {
       toast.error("Delegated Session Budget Exceeded", {
-        description: `Required offset ($${flight.estimate.usdcCost.toLocaleString()} USDC) exceeds your active session cap ($${activeSessionCap.toLocaleString()} USDC). Increase cap in Session Delegation.`,
+        description: `Executes $${executedUsdc.toLocaleString()} USDC at ${demoScaleLabel()} scale (full estimate $${flight.estimate.usdcCost.toLocaleString()}). Exceeds cap ($${activeSessionCap.toLocaleString()} USDC). Increase cap in Session Delegation.`,
         action: onOpenSessionModal
           ? {
               label: "Increase Cap",
@@ -257,7 +262,7 @@ export default function LandedSettlementQueue({
       const { checkTreasuryFunds, insufficientFundsToast } = await import(
         "@/lib/treasury-guard"
       );
-      const needed = BigInt(flight.estimate.usdcAmountMicro.toString());
+      const needed = scaleUsdcMicro(fullMicro);
       const check = await checkTreasuryFunds(treasuryAddress, needed);
       if (!check.ok) {
         const t = insufficientFundsToast(check, treasuryAddress);
@@ -317,7 +322,7 @@ export default function LandedSettlementQueue({
             airborneSeconds: Math.floor(flight.airborneSeconds),
             fuelBurnKg: Math.floor(flight.estimate.totalFuelBurnKg),
             co2Kg: Math.floor(flight.estimate.totalCo2Kg),
-            usdcAmountMicro: BigInt(flight.estimate.usdcAmountMicro.toString()),
+            usdcAmountMicro: scaleUsdcMicro(fullMicro),
             swapVmBytecode: flight.estimate.swapVmBytecode as `0x${string}`,
             vaultAddress: SKYROUTE_VAULT_ADDRESS,
             aquaAddress,
@@ -968,7 +973,7 @@ export default function LandedSettlementQueue({
                         <span>Recorded path attached : replay to verify, then settle from the console.</span>
                       </div>
                     )}
-                    {flight.estimate.usdcCost > activeSessionCap && (
+                    {scaledUsdc(flight.estimate.usdcCost) > activeSessionCap && (
                       <div className="flex items-center justify-between px-3 py-1.5 bg-[#D6D5CF] rounded-lg border border-[#D4D3CD] text-[#111111] text-[11px] mb-2 font-mono">
                         <div className="flex items-center gap-1.5">
                           <ShieldCheck className="w-3.5 h-3.5 text-[#FF4D00] shrink-0" />
@@ -1008,8 +1013,8 @@ export default function LandedSettlementQueue({
                           {isSettling
                             ? "Broadcasting to Arc Testnet..."
                             : confirmId === flight.id
-                            ? `Confirm $${flight.estimate.usdcCost.toFixed(2)} real USDC spend`
-                            : `Settle Carbon Offset ($${flight.estimate.usdcCost.toFixed(2)} USDC)`}
+                            ? `Confirm $${scaledUsdc(flight.estimate.usdcCost).toFixed(2)} USDC spend (${demoScaleLabel()} demo scale)`
+                            : `Settle Carbon Offset ($${scaledUsdc(flight.estimate.usdcCost).toFixed(2)} USDC)`}
                         </span>
                       </button>
                     )}

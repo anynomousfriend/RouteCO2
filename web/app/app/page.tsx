@@ -29,6 +29,7 @@ import {
   rankLandingCandidates,
   type LandingCandidate,
 } from "@/lib/landing-candidates";
+import { scaleUsdcMicro, scaledUsdc, demoScaleLabel } from "@/lib/demo-scale";
 import { NavigationDock } from "@/components/NavigationDock";
 import { FlightMasterCard } from "@/components/FlightMasterCard";
 import { DescentTimelineBar } from "@/components/DescentTimelineBar";
@@ -992,11 +993,15 @@ export default function FlightOperationsConsole() {
       return;
     }
 
-    if (!byokKey && usdcCost > sessionData.budgetCapUSDC) {
+    // Session cap gates the EXECUTED (demo-scaled) spend, not the full estimate.
+    const executedUsdc = scaledUsdc(usdcCost);
+    if (!byokKey && executedUsdc > sessionData.budgetCapUSDC) {
       toast.error("Budget Cap Exceeded", {
-        description: `Flight settlement cost ($${usdcCost.toFixed(
+        description: `Flight settlement executes $${executedUsdc.toFixed(
           2
-        )} USDC) exceeds delegated session budget cap ($${sessionData.budgetCapUSDC.toFixed(
+        )} USDC at ${demoScaleLabel()} demo scale (full estimate $${usdcCost.toFixed(
+          2
+        )}), exceeding the delegated cap ($${sessionData.budgetCapUSDC.toFixed(
           2
         )} USDC).`,
         action: {
@@ -1009,11 +1014,12 @@ export default function FlightOperationsConsole() {
 
     // Pre-flight treasury spend guard: verify real USDC covers the pull before broadcasting.
     // BYOK settles from the visitor's own wallet, so the guard checks that address.
+    // Guard amount is the scaled execution amount (what the chain will pull).
     {
       const { checkTreasuryFunds } = await import(
         "@/lib/treasury-guard"
       );
-      const neededMicro = BigInt(Math.round(usdcCost * 1_000_000));
+      const neededMicro = scaleUsdcMicro(BigInt(Math.round(usdcCost * 1_000_000)));
       const guardTreasury = byokKey && byokAddress ? byokAddress : activeWalletAddress;
       const funds = await checkTreasuryFunds(guardTreasury, neededMicro);
       if (!funds.ok) {
@@ -1082,7 +1088,7 @@ export default function FlightOperationsConsole() {
             airborneSeconds: Math.floor(airborneSeconds),
             fuelBurnKg: Math.floor(fuelBurnKg),
             co2Kg: Math.floor(co2Kg),
-            usdcAmountMicro: BigInt(Math.round(usdcCost * 1_000_000)),
+            usdcAmountMicro: scaleUsdcMicro(BigInt(Math.round(usdcCost * 1_000_000))),
             swapVmBytecode: "0x01020304",
             vaultAddress: DEPLOYED_VAULT_ADDRESS,
             aquaAddress,
@@ -1092,7 +1098,7 @@ export default function FlightOperationsConsole() {
             toast.loading(`BYOK: ${STEP_LABELS[s.step] || s.step}…`, { id: toastId });
           }
         );
-        data = { ...result, scaledCostUSDC: (usdcCost / 1000).toFixed(4) };
+        data = { ...result, scaledCostUSDC: scaledUsdc(usdcCost).toFixed(4) };
       } else {
         const res = await fetch("/api/settle", {
           method: "POST",
@@ -1273,7 +1279,7 @@ export default function FlightOperationsConsole() {
         fuelBurnKg,
         co2Kg,
         costUSDC: usdcCost,
-        scaledCostUSDC: (usdcCost / 1000).toFixed(4),
+        scaledCostUSDC: scaledUsdc(usdcCost).toFixed(4),
         totalCarbonOffsetKg: totalCarbonCredits || undefined,
         blockNumber: undefined,
         txHash: settlementTxHash,
@@ -1407,7 +1413,7 @@ export default function FlightOperationsConsole() {
           fuelBurnKg={fuelBurnKg}
           co2Kg={co2Kg}
           usdcCost={usdcCost}
-          scaledCostUSDC={(usdcCost / 1000).toFixed(4)}
+          scaledCostUSDC={scaledUsdc(usdcCost).toFixed(4)}
           treasuryBalance={treasuryBalance}
           isBalanceLoading={isBalanceLoading}
           totalCarbonCredits={totalCarbonCredits}

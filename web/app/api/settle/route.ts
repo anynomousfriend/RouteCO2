@@ -73,7 +73,11 @@ export async function POST(request: NextRequest) {
     const serverTreasury = (process.env.SERVER_TREASURY_ADDRESS ||
       SERVER_TREASURY_DEFAULT) as Address;
     const treasury: Address = (treasuryAddress as Address) || serverTreasury;
-    const finalUsdcAmount = BigInt(usdcAmount);
+    // Demo-scale execution (authoritative here, so direct POSTs can't bypass
+    // it): wire format stays full-economics micro-USDC; the chain pulls the
+    // scaled amount. See lib/demo-scale.ts (default 1:1000, "1" = full value).
+    const { scaleUsdcMicro, demoScaleLabel } = await import("@/lib/demo-scale");
+    const finalUsdcAmount = scaleUsdcMicro(BigInt(usdcAmount));
     const finalBytecode = ((swapVmBytecode as Hex) || "0x010203") as Hex;
 
     // Register Flight Manifest on-chain first via the Agent Wallet
@@ -215,10 +219,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Demo scaling, documented explicitly:
-    // Full carbon valuation is finalUsdcAmount in 6-decimal micro-USDC (Arc Testnet USDC ERC-20
-    // 0x3600...0000 has 6 decimals; native gas is also USDC). settleWheelsDown pulls the FULL
-    // finalUsdcAmount via Aqua.pull (real ERC20). scaledNativeValue is an additional 1:1000
-    // native msg.value demo contribution, NOT the settlement amount itself.
+    // finalUsdcAmount is the EXECUTED on-chain pull (6-decimal micro-USDC),
+    // already divided by the demo divisor in lib/demo-scale.ts (default 1:1000).
+    // settleWheelsDown pulls exactly finalUsdcAmount via Aqua.pull (real ERC20).
+    // scaledNativeValue is an additional native msg.value demo contribution
+    // alongside the pull, NOT the settlement amount itself.
     const scaledNativeValue =
       finalUsdcAmount > 0n
         ? finalUsdcAmount * 1_000_000_000n
@@ -306,9 +311,9 @@ export async function POST(request: NextRequest) {
           (err instanceof Error ? err.message : String(err))
       );
     }
-
     const scaledCostUSDC = (Number(scaledNativeValue) / 1e18).toFixed(4);
-    const fullCostUSDC = (Number(finalUsdcAmount) / 1e6).toFixed(2);
+    // Executed ERC20 pull (what the chain actually moved), post demo-scale.
+    const executedCostUSDC = (Number(finalUsdcAmount) / 1e6).toFixed(2);
 
     return NextResponse.json({
       success: true,
@@ -322,9 +327,9 @@ export async function POST(request: NextRequest) {
       agentAddress: agentWallet,
       treasuryAddress: treasury,
       scaledCostUSDC,
-      fullCostUSDC,
+      executedCostUSDC,
       totalCarbonOffsetKg,
-      scalingRatio: "1:1,000",
+      scalingRatio: demoScaleLabel(),
     });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Settlement execution failed";

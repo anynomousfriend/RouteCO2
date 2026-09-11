@@ -5,6 +5,7 @@ import { Search, MapPin, Fuel, Leaf, Radio, Zap } from "lucide-react";
 import NumberFlow from "@number-flow/react";
 import { AircraftWireframe } from "./AircraftWireframe";
 import type { PlayableTrack } from "../lib/replay-tracks";
+import { scaledUsdc, demoScaleLabel } from "../lib/demo-scale";
 
 interface FlightMasterCardProps {
   scenario: PlayableTrack | null;
@@ -209,11 +210,11 @@ export function FlightMasterCard({
             </span>
             <div>
               <div className="font-mono text-[19px] font-semibold text-[#111111] leading-none tabular-nums">
-                ${scaledCostUSDC || (usdcCost / 1000).toFixed(4)}
+                ${scaledCostUSDC || scaledUsdc(usdcCost).toFixed(4)}
                 <span className="text-xs ml-1 text-[#555555] font-normal">USDC</span>
               </div>
               <div className="text-[9px] font-mono text-[#555555] mt-1">
-                1:1k Scale (${usdcCost.toFixed(2)})
+                {demoScaleLabel()} Scale (${usdcCost.toFixed(2)})
               </div>
             </div>
           </div>
